@@ -1,14 +1,15 @@
 from pathlib import Path
 from typing import Literal
-from pydantic import Field, field_validator
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class MQTTConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MQTT_", extra="ignore")
 
-    host: str = "mosquitto"
-    port: int = 1883
+    upstream_host: str = "mosquitto"
+    upstream_port: int = 1883
     username: str | None = None
     password: str | None = None
     client_id: str = "mosquitto-exporter"
@@ -26,9 +27,15 @@ class OTelConfig(BaseSettings):
 
     endpoint: str = "http://otelcol:4317"
     service_name: str = "mosquitto-exporter"
+    resource_attributes: dict[str, str] = Field(default_factory=dict)
     insecure: bool = True
+    timeout: int = 10
     headers: dict[str, str] = {}
     export_interval: int = 30
+
+    @property
+    def export_interval_ms(self) -> int:
+        return self.export_interval * 1000
 
 
 class PrometheusConfig(BaseSettings):
@@ -46,26 +53,30 @@ class MetricsConfig(BaseSettings):
     prometheus_enabled: bool = True
     otel_enabled: bool = True
     export_interval: int = 30
-    sys_topics: list[str] = Field(default_factory=lambda: [
-        "$SYS/broker/uptime",
-        "$SYS/broker/clients/connected",
-        "$SYS/broker/clients/expired",
-        "$SYS/broker/clients/disconnected",
-        "$SYS/broker/messages/received",
-        "$SYS/broker/messages/sent",
-        "$SYS/broker/messages/dropped",
-        "$SYS/broker/messages/inflight",
-        "$SYS/broker/bytes/received",
-        "$SYS/broker/bytes/sent",
-        "$SYS/broker/subscriptions/count",
-    ])
+    scrape_interval: int = 10
+    stale_threshold: int = 120
+    sys_topics: list[str] = Field(
+        default_factory=lambda: [
+            "$SYS/broker/uptime",
+            "$SYS/broker/clients/connected",
+            "$SYS/broker/clients/expired",
+            "$SYS/broker/clients/disconnected",
+            "$SYS/broker/messages/received",
+            "$SYS/broker/messages/sent",
+            "$SYS/broker/messages/dropped",
+            "$SYS/broker/messages/inflight",
+            "$SYS/broker/bytes/received",
+            "$SYS/broker/bytes/sent",
+            "$SYS/broker/subscriptions/count",
+        ]
+    )
 
 
 class LoggingConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LOG_", extra="ignore")
 
     level: str = "INFO"
-    format: Literal "
+    format: Literal["json", "console"] = "json"
 
 
 class Config(BaseSettings):
@@ -87,7 +98,7 @@ def load_config(config_path: str | None = None) -> Config:
         return _config
 
     if config_path and Path(config_path).exists():
-        _config = Config(_env_file=config_path)
+        _config = Config(_env_file=config_path)  # type: ignore[call-arg]
     else:
         _config = Config()
     return _config
