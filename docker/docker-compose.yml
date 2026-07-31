@@ -14,7 +14,7 @@ services:
     networks:
       - mqtt-observability
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "5"]
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "5"]
       interval: 10s
       timeout: 5s
       retries: 5
