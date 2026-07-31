@@ -10,7 +10,6 @@ COPY pyproject.toml uv.lock* ./
 RUN uv pip install --system -e .
 
 COPY src/ ./src/
-COPY config.yaml.example config.yaml
 
 EXPOSE 1884 9464
 
