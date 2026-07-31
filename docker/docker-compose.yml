@@ -26,11 +26,8 @@ services:
       dockerfile: Dockerfile
     container_name: mqtt-interceptor
     ports:
-      - "1884:1884"
       - "9464:9464"
     environment:
-      - MQTT_LISTEN_HOST=0.0.0.0
-      - MQTT_LISTEN_PORT=1884
       - MQTT_UPSTREAM_HOST=mosquitto
       - MQTT_UPSTREAM_PORT=1883
       - MQTT_VERSION=5
@@ -48,7 +45,7 @@ services:
     networks:
       - mqtt-observability
     healthcheck:
-      test: ["CMD", "python", "-c", "import paho.mqtt.client as mqtt; c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2); c.connect('localhost', 1884, 5); c.disconnect(); print('OK')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9464/metrics')"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -62,8 +59,8 @@ services:
     ports:
       - "9494:9494"
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=1883
+      - MQTT_UPSTREAM_HOST=mosquitto
+      - MQTT_UPSTREAM_PORT=1883
       - MQTT_USERNAME=${MQTT_USERNAME:-}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - PROMETHEUS_ENABLED=true
@@ -97,13 +94,14 @@ services:
       - "4318:4318"
       - "8888:8888"
       - "8889:8889"
+      - "13133:13133"
     networks:
       - mqtt-observability
     depends_on:
       - jaeger
       - prometheus
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/metrics"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -189,11 +187,13 @@ services:
       sh -c "
         sleep 5 &&
         while true; do
-          mosquitto_pub -h mqtt-interceptor -p 1884 -t 'devices/sensor-001/telemetry' -m '{\"temperature\": 23.5, \"humidity\": 65, \"timestamp\": '$(date +%s)''}' -q 1 &&
+          mosquitto_pub -h mosquitto -p 1883 -t 'devices/sensor-001/telemetry' -m '{\"temperature\": 23.5, \"humidity\": 65, \"timestamp\": '$(date +%s)''}' -q 1 &&
           sleep 10
         done
       "
     depends_on:
+      mosquitto:
+        condition: service_healthy
       mqtt-interceptor:
         condition: service_healthy
     networks:

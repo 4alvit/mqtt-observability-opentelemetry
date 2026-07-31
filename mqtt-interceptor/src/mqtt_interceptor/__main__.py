@@ -188,13 +188,12 @@ class TopicSpanProcessor:
 
 
 class MQTTInterceptor:
-    """MQTT proxy that intercepts messages for tracing and metrics."""
+    """MQTT observer that subscribes to broker topics to trace messages and collect metrics."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
         self.running = False
         self.client: mqtt.Client | None = None
-        self.upstream_client: mqtt.Client | None = None
         self.propagator = TraceContextPropagator(config.trace.propagator)
         self.tracer: trace.Tracer | None = None
         self.span_processor: TopicSpanProcessor | None = None
@@ -238,7 +237,8 @@ class MQTTInterceptor:
         properties: mqtt.Properties | None,
     ) -> None:
         logger.info("Interceptor connected", reason_code=reason_code)
-        client.subscribe("#", qos=2)
+        for pattern in self.config.trace.topic_patterns:
+            client.subscribe(pattern, qos=2)
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         with intercept_latency.labels(direction="subscribe").time():
@@ -260,87 +260,7 @@ class MQTTInterceptor:
             span = self.span_processor.create_span(msg.topic, "subscribe", attrs)
             if span:
                 with trace.use_span(span, end_on_exit=True):
-                    self._forward_to_upstream(msg, span.get_span_context())
-                return
-
-        self._forward_to_upstream(msg, span_context)
-
-    def _forward_to_upstream(
-        self, msg: mqtt.MQTTMessage, span_context: trace.SpanContext | None
-    ) -> None:
-        if not self.upstream_client or not self.upstream_client.is_connected():
-            logger.warning("Upstream not connected, dropping message")
-            return
-
-        props: mqtt.Properties | None
-        if self.config.trace.propagate_on_publish and span_context:
-            props = mqtt.Properties(mqtt.PacketTypes.PUBLISH)
-            _, user_props = self.propagator.inject(
-                None, getattr(msg, "user_properties", None), span_context
-            )
-            if user_props:
-                props.UserProperty = user_props
-        else:
-            props = msg.properties
-            user_props = getattr(msg, "user_properties", None)
-
-        try:
-            self.upstream_client.publish(
-                msg.topic,
-                msg.payload,
-                qos=msg.qos,
-                retain=msg.retain,
-                properties=props,
-            )
-        except Exception as e:
-            logger.error("Failed to forward message", error=str(e), topic=msg.topic)
-
-    def _on_upstream_connect(
-        self,
-        client: mqtt.Client,
-        userdata: Any,
-        flags: mqtt.ConnectFlags,
-        reason_code: mqtt.ReasonCode,
-        properties: mqtt.Properties | None,
-    ) -> None:
-        logger.info("Upstream connected", reason_code=reason_code)
-
-    def _on_upstream_message(
-        self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage
-    ) -> None:
-        with intercept_latency.labels(direction="publish").time():
-            messages_intercepted.labels(direction="publish", topic_pattern="all").inc()
-            self._forward_to_downstream(msg)
-
-    def _forward_to_downstream(self, msg: mqtt.MQTTMessage) -> None:
-        if not self.client or not self.client.is_connected():
-            return
-
-        props: mqtt.Properties | None
-        if self.config.trace.propagate_on_subscribe:
-            span_context = trace.get_current_span().get_span_context()
-            if span_context.is_valid:
-                props = mqtt.Properties(mqtt.PacketTypes.PUBLISH)
-                _, user_props = self.propagator.inject(
-                    None, getattr(msg, "user_properties", None), span_context
-                )
-                if user_props:
-                    props.UserProperty = user_props
-            else:
-                props = msg.properties
-        else:
-            props = msg.properties
-
-        try:
-            self.client.publish(
-                msg.topic,
-                msg.payload,
-                qos=msg.qos,
-                retain=msg.retain,
-                properties=props,
-            )
-        except Exception as e:
-            logger.error("Failed to forward to downstream", error=str(e), topic=msg.topic)
+                    pass
 
     async def start(self) -> None:
         self.running = True
@@ -356,34 +276,11 @@ class MQTTInterceptor:
         if self.config.mqtt.username:
             self.client.username_pw_set(self.config.mqtt.username, self.config.mqtt.password)
 
-        self.upstream_client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2,
-            client_id=f"{self.config.mqtt.client_id}-upstream",
-            protocol=mqtt.MQTTv5 if self.config.mqtt.version == 5 else mqtt.MQTTv311,
-        )
-        self.upstream_client.on_connect = self._on_upstream_connect
-        self.upstream_client.on_message = self._on_upstream_message
-        self.upstream_client.subscribe("#", qos=2)
-
-        if self.config.mqtt.username:
-            self.upstream_client.username_pw_set(
-                self.config.mqtt.username, self.config.mqtt.password
-            )
-
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            self.upstream_client.connect,
-            self.config.mqtt.upstream_host,
-            self.config.mqtt.upstream_port,
-            self.config.mqtt.keepalive,
-        )
-        self.upstream_client.loop_start()
-
         await asyncio.get_event_loop().run_in_executor(
             None,
             self.client.connect,
-            self.config.mqtt.listen_host,
-            self.config.mqtt.listen_port,
+            self.config.mqtt.upstream_host,
+            self.config.mqtt.upstream_port,
             self.config.mqtt.keepalive,
         )
         self.client.loop_start()
@@ -394,7 +291,6 @@ class MQTTInterceptor:
 
         logger.info(
             "MQTT Interceptor started",
-            listen=self.config.mqtt.listen_address,
             upstream=self.config.mqtt.upstream_address,
         )
 
@@ -403,9 +299,6 @@ class MQTTInterceptor:
         if self.client:
             self.client.loop_stop()
             self.client.disconnect()
-        if self.upstream_client:
-            self.upstream_client.loop_stop()
-            self.upstream_client.disconnect()
         logger.info("MQTT Interceptor stopped")
 
 

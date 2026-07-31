@@ -8,8 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class MQTTConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MQTT_", extra="ignore")
 
-    listen_host: str = Field(default="0.0.0.0", alias="LISTEN_HOST")
-    listen_port: int = Field(default=1884, alias="LISTEN_PORT")
     upstream_host: str = Field(default="mosquitto", alias="UPSTREAM_HOST")
     upstream_port: int = Field(default=1883, alias="UPSTREAM_PORT")
     version: Literal[3, 5] = Field(default=5, alias="VERSION")
@@ -18,10 +16,6 @@ class MQTTConfig(BaseSettings):
     password: str | None = Field(default=None, alias="PASSWORD")
     keepalive: int = Field(default=60, alias="KEEPALIVE")
     clean_start: bool = Field(default=True, alias="CLEAN_START")
-
-    @property
-    def listen_address(self) -> str:
-        return f"{self.listen_host}:{self.listen_port}"
 
     @property
     def upstream_address(self) -> str:
