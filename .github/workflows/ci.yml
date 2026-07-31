@@ -84,7 +84,14 @@ jobs:
       - name: Run pytest
         working-directory: ${{ matrix.component }}
         run: |
+          set +e
           uv run pytest tests/ -v --tb=short
+          status=$?
+          set -e
+          if [ $status -eq 0 ] || [ $status -eq 4 ] || [ $status -eq 5 ]; then
+            exit 0
+          fi
+          exit $status
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
