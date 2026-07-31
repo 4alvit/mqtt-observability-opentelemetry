@@ -5,7 +5,6 @@ description = "MQTT message interceptor with W3C Trace Context propagation"
 authors = [{name = "4alvit", email = "dev@4alvit.com"}]
 license = {text = "MIT"}
 readme = "README.md"
-repository = "https://github.com/4alvit/mqtt-observability-opentelemetry"
 classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
