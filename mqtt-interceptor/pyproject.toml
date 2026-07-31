@@ -26,6 +26,9 @@ dependencies = [
     "prometheus-client>=0.19.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/4alvit/mqtt-observability-opentelemetry"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
