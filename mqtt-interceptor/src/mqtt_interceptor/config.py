@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 from typing import Literal
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,8 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class MQTTConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MQTT_", extra="ignore")
 
-    listen_host: str = Field(default="0.0.0.0", alias="LISTEN_HOST")
-    listen_port: int = Field(default=1884, alias="LISTEN_PORT")
     upstream_host: str = Field(default="mosquitto", alias="UPSTREAM_HOST")
     upstream_port: int = Field(default=1883, alias="UPSTREAM_PORT")
     version: Literal[3, 5] = Field(default=5, alias="VERSION")
@@ -20,10 +18,6 @@ class MQTTConfig(BaseSettings):
     clean_start: bool = Field(default=True, alias="CLEAN_START")
 
     @property
-    def listen_address(self) -> str:
-        return f"{self.listen_host}:{self.listen_port}"
-
-    @property
     def upstream_address(self) -> str:
         return f"{self.upstream_host}:{self.upstream_port}"
 
@@ -32,7 +26,10 @@ class TraceConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRACE_", extra="ignore")
 
     propagator: Literal["w3c", "baggage", "mqtt-topic"] = Field(default="w3c", alias="PROPAGATOR")
-    topic_patterns: list[str] = Field(default_factory=lambda: ["devices/+/telemetry", "devices/+/commands"], alias="TOPIC_PATTERNS")
+    topic_patterns: list[str] = Field(
+        default_factory=lambda: ["devices/+/telemetry", "devices/+/commands"],
+        alias="TOPIC_PATTERNS",
+    )
     sample_rate: float = Field(default=0.1, ge=0.0, le=1.0, alias="SAMPLE_RATE")
     propagate_on_publish: bool = Field(default=True, alias="PROPAGATE_ON_PUBLISH")
     propagate_on_subscribe: bool = Field(default=True, alias="PROPAGATE_ON_SUBSCRIBE")
@@ -102,6 +99,7 @@ class Config(BaseSettings):
     @classmethod
     def from_yaml(cls, path: str | Path) -> "Config":
         import yaml
+
         with open(path) as f:
             data = yaml.safe_load(f) or {}
         return cls(**data)
@@ -113,4 +111,12 @@ def load_config(config_path: str | Path | None = None) -> Config:
     return Config()
 
 
-__all__ = ["Config", "MQTTConfig", "TraceConfig", "OTELConfig", "MetricsConfig", "LoggingConfig", "load_config"]
+__all__ = [
+    "Config",
+    "MQTTConfig",
+    "TraceConfig",
+    "OTELConfig",
+    "MetricsConfig",
+    "LoggingConfig",
+    "load_config",
+]
