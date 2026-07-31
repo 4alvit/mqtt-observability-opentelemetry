@@ -1,0 +1,60 @@
+[project]
+name = "mqtt-interceptor"
+version = "0.1.0"
+description = "MQTT message interceptor with W3C Trace Context propagation"
+authors = [{name = "4alvit", email = "dev@4alvit.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+repository = "https://github.com/4alvit/mqtt-observability-opentelemetry"
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: System :: Monitoring",
+    "Topic :: Internet :: MQTT",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "paho-mqtt>=2.0.0",
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-instrumentation-mqtt>=0.42.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "structlog>=24.1.0",
+    "prometheus-client>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "UP", "W"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pydantic-settings]
+env_file = ".env"
+env_file_encoding = "utf-8"

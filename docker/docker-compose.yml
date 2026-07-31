@@ -1,0 +1,211 @@
+version: "3.9"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    networks:
+      - mqtt-observability
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "5"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mqtt-interceptor:
+    build:
+      context: ../mqtt-interceptor
+      dockerfile: Dockerfile
+    container_name: mqtt-interceptor
+    ports:
+      - "1884:1884"
+      - "9464:9464"
+    environment:
+      - MQTT_LISTEN_HOST=0.0.0.0
+      - MQTT_LISTEN_PORT=1884
+      - MQTT_UPSTREAM_HOST=mosquitto
+      - MQTT_UPSTREAM_PORT=1883
+      - MQTT_VERSION=5
+      - TRACE_PROPAGATOR=w3c
+      - TRACE_TOPIC_PATTERNS=devices/+/telemetry,devices/+/commands,vehicles/+/telemetry
+      - TRACE_SAMPLE_RATE=0.1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_SERVICE_NAME=mqtt-interceptor
+      - LOG_LEVEL=INFO
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      otelcol:
+        condition: service_started
+    networks:
+      - mqtt-observability
+    healthcheck:
+      test: ["CMD", "python", "-c", "import paho.mqtt.client as mqtt; c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2); c.connect('localhost', 1884, 5); c.disconnect(); print('OK')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mosquitto-exporter:
+    build:
+      context: ../mosquitto-exporter
+      dockerfile: Dockerfile
+    container_name: mosquitto-exporter
+    ports:
+      - "9494:9494"
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      - PROMETHEUS_ENABLED=true
+      - PROMETHEUS_PORT=9494
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_SERVICE_NAME=mosquitto-exporter
+      - METRICS_SCRAPE_INTERVAL=30
+      - LOG_LEVEL=INFO
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      otelcol:
+        condition: service_started
+    networks:
+      - mqtt-observability
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9494/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.106.0
+    container_name: otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otelcol-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "8889:8889"
+    networks:
+      - mqtt-observability
+    depends_on:
+      - jaeger
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - mqtt-observability
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ../grafana-dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - mqtt-observability
+    depends_on:
+      - prometheus
+      - jaeger
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "6831:6831/udp"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+    volumes:
+      - jaeger-data:/var/lib/jaeger
+    networks:
+      - mqtt-observability
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  mqtt-test-client:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-test-client
+    command: >
+      sh -c "
+        sleep 5 &&
+        while true; do
+          mosquitto_pub -h mqtt-interceptor -p 1884 -t 'devices/sensor-001/telemetry' -m '{\"temperature\": 23.5, \"humidity\": 65, \"timestamp\": '$(date +%s)''}' -q 1 &&
+          sleep 10
+        done
+      "
+    depends_on:
+      mqtt-interceptor:
+        condition: service_healthy
+    networks:
+      - mqtt-observability
+
+networks:
+  mqtt-observability:
+    driver: bridge
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
+  prometheus-data:
+  grafana-data:
+  jaeger-data:
