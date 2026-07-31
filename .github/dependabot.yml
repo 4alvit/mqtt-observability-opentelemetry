@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /docker/test-publisher
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /mosquitto-exporter
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /mqtt-interceptor
+    schedule:
+      interval: daily
