@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ matrix.component }}
         run: |
-          uv pip install -e ".[dev]"
+          uv pip install --system -e ".[dev]"
 
       - name: Run ruff (lint)
         working-directory: ${{ matrix.component }}
@@ -79,7 +79,7 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ matrix.component }}
         run: |
-          uv pip install -e ".[dev]"
+          uv pip install --system -e ".[dev]"
 
       - name: Run pytest
         working-directory: ${{ matrix.component }}
