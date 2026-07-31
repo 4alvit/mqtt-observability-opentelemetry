@@ -2,8 +2,8 @@ import asyncio
 import builtins
 import signal
 import time
-
 from dataclasses import dataclass
+from typing import Any
 
 import paho.mqtt.client as mqtt
 import structlog
@@ -17,7 +17,6 @@ from opentelemetry.sdk.resources import Resource
 from prometheus_client import start_http_server
 
 from mosquitto_exporter.config import Config, load_config
-
 
 logger = structlog.get_logger()
 
