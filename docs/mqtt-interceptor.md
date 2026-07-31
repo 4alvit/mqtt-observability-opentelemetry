@@ -194,17 +194,19 @@ open http://localhost:16686
 
 ## Architecture
 
-```
-Client (1884) → Interceptor → Broker (1883)
-                    ↓
-              OpenTelemetry
-                    ↓
-            Jaeger (traces) ←→ Prometheus (metrics)
-                    ↓
-               Grafana (dashboards)
+```mermaid
+graph LR
+    Client[📱 Client :1884] --> Interceptor[🔍 Interceptor :1884]
+    Interceptor --> Broker[🦟 Broker :1883]
+    
+    Interceptor --> OTel[🔄 OpenTelemetry]
+    OTel --> Jaeger[🔭 Jaeger\nTraces]
+    OTel --> Prometheus[📈 Prometheus\nMetrics]
+    Jaeger --> Grafana[📊 Grafana]
+    Prometheus --> Grafana
 ```
 
-The interceptor runs as an MQTT proxy:
+**Interceptor flow:**
 1. Accepts connections on port 1884
 2. Forwards to upstream broker on 1883
 3. Extracts trace context from incoming messages

@@ -19,34 +19,23 @@ open http://localhost:16686 # Jaeger
 
 ## Architecture
 
-```
-┌─────────────┐    MQTT (1883)      ┌──────────────┐
-│   Devices   │ ──────────────────▶ │   Mosquitto  │
-└─────────────┘                     │   (Broker)   │
-                                    └──────┬───────┘
-                                           │ $SYS/# + #
-                                           ▼
-                    ┌────────────────┬────────────────┐
-                    ▼                ▼                ▼
-           ┌──────────────┐  ┌──────────────┐ ┌──────────────┐
-           │ MQTT         │  │ Mosquitto    │ │ Topic Span   │
-           │ Interceptor  │  │ Exporter     │ │ Processor    │
-           │ (1884)       │  │ (9494)       │ │              │
-           │ W3C Trace    │  │ $SYS → OTel  │ │ Topic        │
-           │ Context      │  │ Metrics      │ │ Correlation  │
-           └──────┬───────┘  └──────┬───────┘ └──────┬───────┘
-                  │                 │                │
-                  ▼                 ▼                ▼
-           ┌────────────────────────────────────────────────┐
-           │           OpenTelemetry Collector              │
-           │  Traces → Jaeger (16686)   Metrics → Prometheus│
-           └────────────────────────────────────────────────┘
-                            │
-                            ▼
-                   ┌────────────────┐
-                   │    Grafana     │
-                   │  (Dashboards)  │
-                   └────────────────┘
+```mermaid
+graph TD
+    Devices[📱 Devices] -->|MQTT 1883| Mosquitto[🦟 Mosquitto Broker]
+    
+    Mosquitto -->|$SYS/# + #| Interceptor[🔍 MQTT Interceptor :1884]
+    Mosquitto -->|$SYS/#| Exporter[📊 Mosquitto Exporter :9494]
+    Mosquitto -->|#| SpanProc[🔗 Topic Span Processor]
+    
+    Interceptor -->|OTLP Traces| Collector[🔄 OTel Collector]
+    Exporter -->|OTLP Metrics| Collector
+    SpanProc -->|OTLP Spans| Collector
+    
+    Collector -->|Traces| Jaeger[🔭 Jaeger :16686]
+    Collector -->|Metrics| Prometheus[📈 Prometheus :9090]
+    
+    Prometheus --> Grafana[📊 Grafana :3000]
+    Jaeger --> Grafana
 ```
 
 ## Components
@@ -84,14 +73,44 @@ Complete demo environment with:
 - Jaeger
 - Test publisher
 
+## Data Flow
+
+```mermaid
+sequenceDiagram
+    participant D as Device
+    participant I as Interceptor
+    participant B as Broker
+    participant E as Exporter
+    participant C as OTel Collector
+    participant J as Jaeger
+    participant P as Prometheus
+    participant G as Grafana
+    
+    D->>I: PUBLISH (with traceparent)
+    I->>I: Extract trace context
+    I->>I: Create span for topic match
+    I->>B: Forward PUBLISH (with trace context)
+    
+    B->>E: $SYS/# topics
+    E->>C: OTLP Metrics
+    
+    C->>J: Traces
+    C->>P: Metrics
+    
+    P->>G: Query metrics
+    J->>G: Query traces
+    
+    G->>User: Dashboards
+```
+
 ## Configuration
 
-All components configure via environment variables or YAML config files. See component READMEs:
+All components configure via environment variables or YAML config files. See component docs:
 
-- [MQTT Interceptor](mqtt-interceptor.md)
-- [Mosquitto Exporter](mosquitto-exporter.md)
-- [Docker Compose](docker-compose.md)
-- [Grafana Dashboards](grafana-dashboards.md)
+- [MQTT Interceptor](docs/mqtt-interceptor.md)
+- [Mosquitto Exporter](docs/mosquitto-exporter.md)
+- [Docker Compose](docs/docker-compose.md)
+- [Grafana Dashboards](docs/grafana-dashboards.md)
 
 ## Trace Context Propagation
 
