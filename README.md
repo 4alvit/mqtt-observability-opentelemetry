@@ -182,3 +182,16 @@ helm install mqtt-obs ./helm/chart
 ## License
 
 MIT License - see [LICENSE](LICENSE)
+
+---
+
+## Related Projects
+
+| Project | Scope | When to Use |
+|---------|-------|-------------|
+| **mqtt-observability-opentelemetry** (this) | **Generic** — Works with ANY MQTT broker. No Venus OS dependency. | Generic MQTT/IoT observability, any broker, any device types |
+| [venus-os-observability](https://github.com/victron-venus/venus-os-observability) | **Venus OS specific** — Depends on D-Bus, Victron protocols. | Victron Venus OS only: D-Bus event tracing, inverter metrics, Cerbo GX integration |
+
+**Choose this repo if:** You need MQTT observability for any IoT system (industrial, home automation, custom devices).
+
+**Choose venus-os-observability if:** You are running Victron Venus OS (Cerbo GX, Raspberry Pi with Venus OS) and need D-Bus integration, inverter-specific metrics, and Venus OS native deployment.
