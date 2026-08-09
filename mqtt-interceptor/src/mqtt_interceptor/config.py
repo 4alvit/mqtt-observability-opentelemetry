@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,7 +63,7 @@ class OTELConfig(BaseSettings):
             try:
                 import json
 
-                return json.loads(v)
+                return cast(dict[str, str], json.loads(v))
             except json.JSONDecodeError:
                 pass
             # Fall back to comma-separated key=value format
