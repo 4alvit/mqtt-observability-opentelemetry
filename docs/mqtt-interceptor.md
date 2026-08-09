@@ -175,7 +175,7 @@ def on_message(client, userdata, msg):
 
 ```bash
 # Start the stack
-docker compose -f docker/docker-compose.yaml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # Publish test messages with trace context
 mosquitto_pub -h localhost -p 1884 \
