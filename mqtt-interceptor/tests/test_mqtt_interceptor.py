@@ -1,7 +1,7 @@
 """Tests for MQTT Interceptor."""
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import paho.mqtt.client as mqtt
 import pytest

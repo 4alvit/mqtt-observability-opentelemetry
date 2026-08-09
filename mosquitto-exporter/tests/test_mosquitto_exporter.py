@@ -1,20 +1,20 @@
 """Tests for Mosquitto Exporter."""
 
 import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mosquitto_exporter import SYS_METRICS, SYSMetric, SYSMetricsCollector
 from mosquitto_exporter.config import (
     Config,
+    MetricsConfig,
     MQTTConfig,
     OTelConfig,
     PrometheusConfig,
-    MetricsConfig,
-    load_config,
     get_config,
+    load_config,
 )
-from mosquitto_exporter import SYSMetricsCollector, SYSMetric, SYS_METRICS
 
 
 def create_mock_collector(config: Config) -> SYSMetricsCollector:

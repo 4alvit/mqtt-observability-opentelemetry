@@ -7,11 +7,11 @@ from mqtt_interceptor.__main__ import (
 )
 from mqtt_interceptor.config import (
     Config,
-    MQTTConfig,
-    TraceConfig,
-    OTELConfig,
-    MetricsConfig,
     LoggingConfig,
+    MetricsConfig,
+    MQTTConfig,
+    OTELConfig,
+    TraceConfig,
     load_config,
 )
 
