@@ -1,5 +1,13 @@
 # MQTT Observability with OpenTelemetry
 
+[![GitHub Stars](https://img.shields.io/github/stars/4alvit/mqtt-observability-opentelemetry?style=social)](https://github.com/4alvit/mqtt-observability-opentelemetry/stargazers)
+
+---
+
+⭐ **If this project helps you, please star it!** Stars help others discover it and motivate continued development.
+
+---
+
 A complete observability stack for MQTT-based IoT systems.
 
 ## Quick Start
