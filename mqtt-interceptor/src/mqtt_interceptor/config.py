@@ -8,14 +8,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class MQTTConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MQTT_", extra="ignore")
 
-    upstream_host: str = Field(default="mosquitto", alias="UPSTREAM_HOST")
-    upstream_port: int = Field(default=1883, alias="UPSTREAM_PORT")
-    version: Literal[3, 5] = Field(default=5, alias="VERSION")
-    client_id: str = Field(default="mqtt-interceptor", alias="CLIENT_ID")
-    username: str | None = Field(default=None, alias="USERNAME")
-    password: str | None = Field(default=None, alias="PASSWORD")
-    keepalive: int = Field(default=60, alias="KEEPALIVE")
-    clean_start: bool = Field(default=True, alias="CLEAN_START")
+    upstream_host: str = Field(default="mosquitto")
+    upstream_port: int = Field(default=1883)
+    version: Literal[3, 5] = Field(default=5)
+    client_id: str = Field(default="mqtt-interceptor")
+    username: str | None = Field(default=None)
+    password: str | None = Field(default=None)
+    keepalive: int = Field(default=60)
+    clean_start: bool = Field(default=True)
 
     @property
     def upstream_address(self) -> str:
@@ -25,15 +25,14 @@ class MQTTConfig(BaseSettings):
 class TraceConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRACE_", extra="ignore")
 
-    propagator: Literal["w3c", "baggage", "mqtt-topic"] = Field(default="w3c", alias="PROPAGATOR")
+    propagator: Literal["w3c", "baggage", "mqtt-topic"] = Field(default="w3c")
     topic_patterns: list[str] = Field(
-        default_factory=lambda: ["devices/+/telemetry", "devices/+/commands"],
-        alias="TOPIC_PATTERNS",
+        default_factory=lambda: ["devices/+/telemetry", "devices/+/commands"]
     )
-    sample_rate: float = Field(default=0.1, ge=0.0, le=1.0, alias="SAMPLE_RATE")
-    propagate_on_publish: bool = Field(default=True, alias="PROPAGATE_ON_PUBLISH")
-    propagate_on_subscribe: bool = Field(default=True, alias="PROPAGATE_ON_SUBSCRIBE")
-    span_attributes: dict[str, str] = Field(default_factory=dict, alias="SPAN_ATTRIBUTES")
+    sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+    propagate_on_publish: bool = Field(default=True)
+    propagate_on_subscribe: bool = Field(default=True)
+    span_attributes: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("topic_patterns", mode="before")
     @classmethod
@@ -46,23 +45,32 @@ class TraceConfig(BaseSettings):
 class OTELConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OTEL_", extra="ignore")
 
-    endpoint: str = Field(default="http://otelcol:4317", alias="EXPORTER_OTLP_ENDPOINT")
-    service_name: str = Field(default="mqtt-interceptor", alias="SERVICE_NAME")
-    service_version: str = Field(default="0.1.0", alias="SERVICE_VERSION")
-    resource_attributes: dict[str, str] = Field(default_factory=dict, alias="RESOURCE_ATTRIBUTES")
-    insecure: bool = Field(default=True, alias="EXPORTER_OTLP_INSECURE")
-    timeout: int = Field(default=10, alias="EXPORTER_OTLP_TIMEOUT")
-    headers: dict[str, str] = Field(default_factory=dict, alias="EXPORTER_OTLP_HEADERS")
+    endpoint: str = Field(default="http://otelcol:4317")
+    service_name: str = Field(default="mqtt-interceptor")
+    service_version: str = Field(default="0.1.0")
+    resource_attributes: dict[str, str] = Field(default={})
+    insecure: bool = Field(default=True)
+    timeout: int = Field(default=10)
+    headers: dict[str, str] = Field(default={})
 
     @field_validator("resource_attributes", mode="before")
     @classmethod
     def parse_resource_attributes(cls, v: str | dict[str, str]) -> dict[str, str]:
+        if isinstance(v, dict):
+            return v
         if isinstance(v, str):
+            # Try JSON first
+            try:
+                import json
+                return json.loads(v)
+            except json.JSONDecodeError:
+                pass
+            # Fall back to comma-separated key=value format
             result = {}
             for pair in v.split(","):
                 if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    result[k.strip()] = v.strip()
+                    k, v_val = pair.split("=", 1)
+                    result[k.strip()] = v_val.strip()
             return result
         return v
 
@@ -70,17 +78,17 @@ class OTELConfig(BaseSettings):
 class MetricsConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="METRICS_", extra="ignore")
 
-    enabled: bool = Field(default=True, alias="ENABLED")
-    port: int = Field(default=9464, alias="PORT")
-    path: str = Field(default="/metrics", alias="PATH")
+    enabled: bool = Field(default=True)
+    port: int = Field(default=9464)
+    path: str = Field(default="/metrics")
 
 
 class LoggingConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LOG_", extra="ignore")
 
-    level: str = Field(default="INFO", alias="LEVEL")
-    format: Literal["json", "console"] = Field(default="json", alias="FORMAT")
-    level_styles: dict[str, str] = Field(default_factory=dict, alias="LEVEL_STYLES")
+    level: str = Field(default="INFO")
+    format: Literal["json", "console"] = Field(default="json")
+    level_styles: dict[str, str] = Field(default={})
 
 
 class Config(BaseSettings):
