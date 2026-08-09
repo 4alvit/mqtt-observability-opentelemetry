@@ -62,6 +62,7 @@ class OTELConfig(BaseSettings):
             # Try JSON first
             try:
                 import json
+
                 return json.loads(v)
             except json.JSONDecodeError:
                 pass
