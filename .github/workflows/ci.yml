@@ -123,10 +123,10 @@ jobs:
         component:
           - name: mqtt-interceptor
             context: mqtt-interceptor
-            dockerfile: docker/mqtt-interceptor/Dockerfile
+            dockerfile: mqtt-interceptor/Dockerfile
           - name: mosquitto-exporter
             context: mosquitto-exporter
-            dockerfile: docker/mosquitto-exporter/Dockerfile
+            dockerfile: mosquitto-exporter/Dockerfile
           - name: test-publisher
             context: docker/test-publisher
             dockerfile: docker/test-publisher/Dockerfile
