@@ -1,19 +1,19 @@
 """Mosquitto Exporter - Prometheus/OpenTelemetry metrics exporter for Mosquitto MQTT broker."""
 
 from mosquitto_exporter.__main__ import (
-    SYSMetric,
     SYS_METRICS,
+    SYSMetric,
     SYSMetricsCollector,
 )
 from mosquitto_exporter.config import (
     Config,
+    LoggingConfig,
+    MetricsConfig,
     MQTTConfig,
     OTelConfig,
     PrometheusConfig,
-    MetricsConfig,
-    LoggingConfig,
-    load_config,
     get_config,
+    load_config,
 )
 
 __all__ = [

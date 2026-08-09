@@ -5,7 +5,6 @@ import json
 import os
 import random
 import signal
-import time
 from datetime import UTC, datetime
 from typing import Any
 
