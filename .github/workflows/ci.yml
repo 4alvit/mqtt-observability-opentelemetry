@@ -123,13 +123,10 @@ jobs:
         component:
           - name: mqtt-interceptor
             context: mqtt-interceptor
-            dockerfile: mqtt-interceptor/Dockerfile
           - name: mosquitto-exporter
             context: mosquitto-exporter
-            dockerfile: mosquitto-exporter/Dockerfile
           - name: test-publisher
             context: docker/test-publisher
-            dockerfile: docker/test-publisher/Dockerfile
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
@@ -163,7 +160,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -193,14 +190,14 @@ jobs:
         working-directory: docker
         run: |
           docker compose up -d mosquitto mqtt-interceptor mosquitto-exporter otelcol prometheus jaeger
-          sleep 30
+          sleep 60
 
       - name: Health checks
         working-directory: docker
         run: |
           docker compose ps
-          curl -f http://localhost:9494/metrics
-          curl -f http://localhost:9464/metrics
+          for i in {1..10}; do curl -f http://localhost:9494/metrics && break || sleep 5; done
+          for i in {1..10}; do curl -f http://localhost:9464/metrics && break || sleep 5; done
           curl -f http://localhost:16686/
           curl -f http://localhost:9090/-/healthy
 
@@ -208,7 +205,7 @@ jobs:
         working-directory: docker
         run: |
           docker compose up -d mqtt-test-publisher
-          sleep 15
+          sleep 20
           # Check traces appear in Jaeger
           curl -s "http://localhost:16686/api/traces?service=mqtt-interceptor&lookback=1h" | jq '.data | length'
 
