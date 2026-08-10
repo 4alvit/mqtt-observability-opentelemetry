@@ -97,13 +97,12 @@ services:
       - mqtt-observability
     depends_on:
       - jaeger
-      - prometheus
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 10
+      start_period: 30s
 
   prometheus:
     image: prom/prometheus:v2.52.0
@@ -177,6 +176,26 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  mqtt-test-publisher:
+    build:
+      context: ./test-publisher
+      dockerfile: Dockerfile
+    container_name: mqtt-test-publisher
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - PUBLISH_INTERVAL=5
+      - TOPIC_PREFIX=devices
+      - DEVICE_COUNT=5
+      - TRACE_ENABLED=true
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      mqtt-interceptor:
+        condition: service_healthy
+    networks:
+      - mqtt-observability
 
   mqtt-test-client:
     image: eclipse-mosquitto:2.0
