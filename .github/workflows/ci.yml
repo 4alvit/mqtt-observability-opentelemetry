@@ -204,8 +204,9 @@ jobs:
       - name: Test message flow
         working-directory: docker
         run: |
-          docker compose up -d mqtt-test-publisher
-          sleep 20
+          # Use docker compose run (one-off, doesn't restart dependencies)
+          docker compose run --rm mqtt-test-publisher &
+          sleep 25
           # Check traces appear in Jaeger
           curl -s "http://localhost:16686/api/traces?service=mqtt-interceptor&lookback=1h" | jq '.data | length'
 
