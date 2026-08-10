@@ -229,7 +229,7 @@ mosquitto_subscriptions_count
 
 ```bash
 # Start exporter
-docker compose -f docker/docker-compose.yaml up -d mosquitto-exporter
+docker compose -f docker/docker-compose.yml up -d mosquitto-exporter
 
 # Check metrics
 curl http://localhost:9494/metrics
