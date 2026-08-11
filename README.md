@@ -1,6 +1,10 @@
 # MQTT Observability with OpenTelemetry
 
 [![GitHub Stars](https://img.shields.io/github/stars/4alvit/mqtt-observability-opentelemetry?style=social)](https://github.com/4alvit/mqtt-observability-opentelemetry/stargazers)
+[![CI](https://github.com/4alvit/mqtt-observability-opentelemetry/actions/workflows/ci.yml/badge.svg)](https://github.com/4alvit/mqtt-observability-opentelemetry/actions)
+[![License](https://img.shields.io/github/license/4alvit/mqtt-observability-opentelemetry)](https://github.com/4alvit/mqtt-observability-opentelemetry/blob/main/LICENSE)
+[![codecov](https://img.shields.io/codecov/c/github/4alvit/mqtt-observability-opentelemetry)](https://app.codecov.io/gh/4alvit/mqtt-observability-opentelemetry)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 
 ---
 
