@@ -1,6 +1,5 @@
 # MQTT Observability with OpenTelemetry
 
-[![GitHub Stars](https://img.shields.io/github/stars/4alvit/mqtt-observability-opentelemetry?style=social)](https://github.com/4alvit/mqtt-observability-opentelemetry/stargazers)
 [![CI](https://github.com/4alvit/mqtt-observability-opentelemetry/actions/workflows/ci.yml/badge.svg)](https://github.com/4alvit/mqtt-observability-opentelemetry/actions)
 [![License](https://img.shields.io/github/license/4alvit/mqtt-observability-opentelemetry)](https://github.com/4alvit/mqtt-observability-opentelemetry/blob/main/LICENSE)
 [![codecov](https://img.shields.io/codecov/c/github/4alvit/mqtt-observability-opentelemetry)](https://app.codecov.io/gh/4alvit/mqtt-observability-opentelemetry)
@@ -34,18 +33,18 @@ open http://localhost:16686 # Jaeger
 ```mermaid
 graph TD
     Devices[📱 Devices] -->|MQTT 1883| Mosquitto[🦟 Mosquitto Broker]
-    
+
     Mosquitto -->|$SYS/# + #| Interceptor[🔍 MQTT Interceptor :1884]
     Mosquitto -->|$SYS/#| Exporter[📊 Mosquitto Exporter :9494]
     Mosquitto -->|#| SpanProc[🔗 Topic Span Processor]
-    
+
     Interceptor -->|OTLP Traces| Collector[🔄 OTel Collector]
     Exporter -->|OTLP Metrics| Collector
     SpanProc -->|OTLP Spans| Collector
-    
+
     Collector -->|Traces| Jaeger[🔭 Jaeger :16686]
     Collector -->|Metrics| Prometheus[📈 Prometheus :9090]
-    
+
     Prometheus --> Grafana[📊 Grafana :3000]
     Jaeger --> Grafana
 ```
@@ -97,21 +96,21 @@ sequenceDiagram
     participant J as Jaeger
     participant P as Prometheus
     participant G as Grafana
-    
+
     D->>I: PUBLISH (with traceparent)
     I->>I: Extract trace context
     I->>I: Create span for topic match
     I->>B: Forward PUBLISH (with trace context)
-    
+
     B->>E: $SYS/# topics
     E->>C: OTLP Metrics
-    
+
     C->>J: Traces
     C->>P: Metrics
-    
+
     P->>G: Query metrics
     J->>G: Query traces
-    
+
     G->>User: Dashboards
 ```
 
