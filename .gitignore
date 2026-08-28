@@ -77,4 +77,4 @@ docker/mosquitto-logs/
 # IDE specific
 *.pyc
 *.pyo
-*.pyd
+*.pyd*.backup
