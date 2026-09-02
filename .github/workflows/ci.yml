@@ -3,9 +3,21 @@ name: CI/CD
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**.json'
+      - '**.yaml'
+      - '**.yml'
     tags: ['v*']
   pull_request:
     branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**.json'
+      - '**.yaml'
+      - '**.yml'
 
 env:
   REGISTRY: ghcr.io
