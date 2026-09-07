@@ -15,6 +15,7 @@ spec:
       labels:
         app: prometheus
     spec:
+      priorityClassName: observability-critical
       serviceAccountName: prometheus
       containers:
         - name: prometheus
