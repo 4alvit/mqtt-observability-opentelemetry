@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: observability
 resources:
   - namespace.yaml
+  - priority-class.yaml
   - prometheus-config.yaml
   - tempo-config.yaml
   - grafana-datasources.yaml

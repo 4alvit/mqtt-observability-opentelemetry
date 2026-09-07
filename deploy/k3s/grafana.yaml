@@ -15,6 +15,7 @@ spec:
       labels:
         app: grafana
     spec:
+      priorityClassName: observability-critical
       containers:
         - name: grafana
           image: grafana/grafana:11.2.0
