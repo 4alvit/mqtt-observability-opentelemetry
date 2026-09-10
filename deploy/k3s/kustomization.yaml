@@ -13,3 +13,6 @@ resources:
   - prometheus.yaml
   - tempo.yaml
   - grafana.yaml
+  - node-exporter.yaml
+  - kube-state-metrics.yaml
+  - ingress.yaml
