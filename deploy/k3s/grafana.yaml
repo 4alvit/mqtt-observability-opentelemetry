@@ -39,7 +39,11 @@ spec:
                   jq '.id=null' /tmp/raw.json > "$DEST/$out"
                 fi
                 # Point datasource refs at provisioned Prometheus uid
-                sed -i                   -e 's/"uid":"${DS_PROMETHEUS}"/"uid":"Prometheus"/g'                   -e 's/"uid": "${DS_PROMETHEUS}"/"uid":"Prometheus"/g'                   -e 's/"datasource": "Prometheus"/"datasource": {"type":"prometheus","uid":"Prometheus"}/g'                   "$DEST/$out" || true
+                sed -i \
+                  -e 's/"uid":"${DS_PROMETHEUS}"/"uid":"Prometheus"/g' \
+                  -e 's/"uid": "${DS_PROMETHEUS}"/"uid":"Prometheus"/g' \
+                  -e 's/"datasource": "Prometheus"/"datasource": {"type":"prometheus","uid":"Prometheus"}/g' \
+                  "$DEST/$out" || true
               }
               fetch 1860 node-exporter-full.json
               fetch 15760 k8s-views-pods.json
