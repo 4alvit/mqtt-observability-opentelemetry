@@ -1,0 +1,66 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: k3s-wildcard-tls
+  namespace: observability
+spec:
+  secretName: k3s-wildcard-tls
+  dnsNames:
+    - "*.k3s.2560801.xyz"
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-cloudflare
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: observability
+  labels:
+    app: grafana
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - grafana.k3s.2560801.xyz
+      secretName: k3s-wildcard-tls
+  rules:
+    - host: grafana.k3s.2560801.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus
+  namespace: observability
+  labels:
+    app: prometheus
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - prometheus.k3s.2560801.xyz
+      secretName: k3s-wildcard-tls
+  rules:
+    - host: prometheus.k3s.2560801.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090

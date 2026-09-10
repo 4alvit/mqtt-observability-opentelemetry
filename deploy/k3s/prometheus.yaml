@@ -7,6 +7,8 @@ metadata:
     app: prometheus
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -15,6 +17,7 @@ spec:
       labels:
         app: prometheus
     spec:
+      priorityClassName: observability-critical
       serviceAccountName: prometheus
       containers:
         - name: prometheus
@@ -71,7 +74,7 @@ metadata:
   name: observability-prometheus
 rules:
   - apiGroups: [""]
-    resources: [nodes, nodes/proxy, services, endpoints, pods]
+    resources: [nodes, nodes/metrics, nodes/proxy, services, endpoints, pods]
     verbs: [get, list, watch]
   - apiGroups: [networking.k8s.io]
     resources: [ingresses]

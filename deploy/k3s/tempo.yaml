@@ -7,6 +7,8 @@ metadata:
     app: tempo
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: tempo
@@ -15,6 +17,8 @@ spec:
       labels:
         app: tempo
     spec:
+      # Survive DiskPressure longer than BestEffort / low-priority pods on small root disks.
+      priorityClassName: observability-critical
       containers:
         - name: tempo
           image: grafana/tempo:2.6.1
@@ -37,8 +41,10 @@ spec:
             requests:
               cpu: 50m
               memory: 256Mi
+              ephemeral-storage: 256Mi
             limits:
               memory: 1Gi
+              ephemeral-storage: 2Gi
           readinessProbe:
             httpGet:
               path: /ready

@@ -1,7 +1,22 @@
 # Lean observability on k3s
 
-Namespace `observability`: Prometheus + Tempo + Grafana.
-No personal domains / Ingress hostnames — ClusterIP + port-forward only.
+Namespace `observability`: Prometheus + Tempo + Grafana + node-exporter + kube-state-metrics.
+
+## Ingress (Traefik VIP 10.0.0.58)
+
+| Host | Service |
+|------|---------|
+| https://grafana.k3s.2560801.xyz/ | Grafana |
+| https://prometheus.k3s.2560801.xyz/ | Prometheus UI (LAN) |
+
+TLS via cert-manager `Certificate` → secret `k3s-wildcard-tls` (ClusterIssuer `letsencrypt-cloudflare`).
+
+## Exporters
+
+- **node-exporter** DaemonSet on **all** nodes (including mp/syn) — host metrics. Service `node-exporter:9100` (headless).
+- **kube-state-metrics** Deployment — affinity `NotIn` mp,syn (runs on h5|h7|h8). Service `:8080`.
+
+Prometheus scrapes both via `kubernetes_sd` `role: endpoints`, plus existing `kubernetes-pods` annotation scrape.
 
 ## Secrets (names only)
 
@@ -24,9 +39,10 @@ GitHub Actions secrets: `KUBECONFIG`, `GRAFANA_ADMIN_PASSWORD`.
 export KUBECONFIG=~/.kube/h7.yaml
 ./deploy/k3s/deploy.sh
 # or workflow_dispatch on .github/workflows/deploy-k3s.yml
+# After config change: kubectl -n observability rollout restart deploy/prometheus
 ```
 
-## Port-forward
+## Port-forward (fallback)
 
 ```bash
 kubectl -n observability port-forward svc/grafana 3000:3000

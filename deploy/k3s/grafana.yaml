@@ -7,6 +7,8 @@ metadata:
     app: grafana
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
@@ -15,6 +17,7 @@ spec:
       labels:
         app: grafana
     spec:
+      priorityClassName: observability-critical
       containers:
         - name: grafana
           image: grafana/grafana:11.2.0
@@ -35,7 +38,7 @@ spec:
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
             - name: GF_SERVER_ROOT_URL
-              value: "%(protocol)s://%(domain)s:%(http_port)s/"
+              value: "https://grafana.k3s.2560801.xyz/"
             - name: GF_ANALYTICS_REPORTING_ENABLED
               value: "false"
           volumeMounts:
