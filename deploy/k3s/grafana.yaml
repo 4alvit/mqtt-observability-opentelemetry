@@ -18,6 +18,37 @@ spec:
         app: grafana
     spec:
       priorityClassName: observability-critical
+      initContainers:
+        - name: fetch-dashboards
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              apk add --no-cache curl jq >/dev/null
+              DEST=/dashboards
+              fetch() {
+                id="$1"; out="$2"
+                echo "fetching grafana.com dashboard $id -> $out"
+                curl -fsSL "https://grafana.com/api/dashboards/${id}/revisions/latest/download" -o /tmp/raw.json
+                # Bare dashboard JSON or {dashboard: {...}}
+                if jq -e '.dashboard' /tmp/raw.json >/dev/null 2>&1; then
+                  jq '.dashboard | .id=null' /tmp/raw.json > "$DEST/$out"
+                else
+                  jq '.id=null' /tmp/raw.json > "$DEST/$out"
+                fi
+                # Point datasource refs at provisioned Prometheus uid
+                sed -i                   -e 's/"uid":"${DS_PROMETHEUS}"/"uid":"Prometheus"/g'                   -e 's/"uid": "${DS_PROMETHEUS}"/"uid":"Prometheus"/g'                   -e 's/"datasource": "Prometheus"/"datasource": {"type":"prometheus","uid":"Prometheus"}/g'                   "$DEST/$out" || true
+              }
+              fetch 1860 node-exporter-full.json
+              fetch 15760 k8s-views-pods.json
+              fetch 6417 k8s-cluster-prometheus.json
+              fetch 7249 k8s-cluster.json
+              ls -la "$DEST"
+          volumeMounts:
+            - name: dashboards
+              mountPath: /dashboards
       containers:
         - name: grafana
           image: grafana/grafana:11.2.0
@@ -47,6 +78,12 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -72,6 +109,11 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboards
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
