@@ -53,3 +53,14 @@ kubectl -n observability port-forward svc/tempo 3200:3200
 ## PVCs
 
 `prometheus-data`, `tempo-data`, `grafana-data` — 5Gi each, `local-path`.
+
+## Grafana dashboards
+
+`fetch-dashboards` initContainer downloads from grafana.com into an emptyDir, then Grafana file-provisions them:
+
+- Node Exporter Full (1860)
+- Kubernetes / Views / Pods (15760)
+- Kubernetes Cluster (Prometheus) (6417)
+- Kubernetes Cluster (7249)
+
+Datasource: provisioned `Prometheus`. Re-fetched on every pod start (survives PVC wipe).
