@@ -7,8 +7,6 @@ on:
       - '**.md'
       - 'docs/**'
       - '**.json'
-      - '**.yaml'
-      - '**.yml'
     tags: ['v*']
   pull_request:
     branches: [main, develop]
@@ -16,9 +14,6 @@ on:
       - '**.md'
       - 'docs/**'
       - '**.json'
-      - '**.yaml'
-      - '**.yml'
-
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
