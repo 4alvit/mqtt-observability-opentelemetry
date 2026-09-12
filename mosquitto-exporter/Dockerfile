@@ -7,10 +7,12 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /usr/local/bin/uv
 
-COPY pyproject.toml uv.lock* ./
-RUN uv pip install --system -e .
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --locked --no-dev --no-install-project
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH=/app/src
 
 COPY src/ ./src/
 

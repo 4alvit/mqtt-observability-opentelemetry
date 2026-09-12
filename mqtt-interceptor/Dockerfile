@@ -4,10 +4,12 @@ FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /usr/local/bin/uv
 
-COPY pyproject.toml uv.lock* ./
-RUN uv pip install --system -e .
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --locked --no-dev --no-install-project
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH=/app/src
 
 COPY src/ ./src/
 

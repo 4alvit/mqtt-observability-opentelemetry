@@ -1,0 +1,23 @@
+{
+  "required": [
+    "mqtt-interceptor/src",
+    "mqtt-interceptor/uv.lock",
+    "mosquitto-exporter/src",
+    "mosquitto-exporter/uv.lock",
+    "docker/test-publisher/requirements.lock"
+  ],
+  "containers": {
+    "mqtt-interceptor-container.oci.tar": {
+      "context": "mqtt-interceptor",
+      "dockerfile": "mqtt-interceptor/Dockerfile"
+    },
+    "mosquitto-exporter-container.oci.tar": {
+      "context": "mosquitto-exporter",
+      "dockerfile": "mosquitto-exporter/Dockerfile"
+    },
+    "test-publisher-container.oci.tar": {
+      "context": "docker/test-publisher",
+      "dockerfile": "docker/test-publisher/Dockerfile"
+    }
+  }
+}
