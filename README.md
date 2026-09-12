@@ -13,6 +13,12 @@
 
 A complete observability stack for MQTT-based IoT systems.
 
+<!-- ci-release-process:start -->
+## Release process
+
+See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
+<!-- ci-release-process:end -->
+
 ## Quick Start
 
 ```bash
