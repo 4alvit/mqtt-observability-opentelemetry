@@ -1,5 +1,8 @@
 """MQTT Interceptor - MQTT message interception with OpenTelemetry tracing."""
 
+# Explicit re-export retains the existing package attribute.
+# pylint: disable-next=useless-import-alias
+from mqtt_interceptor._version import __version__ as __version__
 from mqtt_interceptor.app import (
     MQTTInterceptor,
     TopicSpanProcessor,
@@ -30,5 +33,3 @@ __all__ = [
     "load_config",
 ]
 # pylint: enable=duplicate-code
-
-__version__ = "0.2.1"
