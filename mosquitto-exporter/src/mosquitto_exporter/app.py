@@ -316,7 +316,7 @@ class SYSMetricsCollector:
             self._parse_and_store(msg.topic, value)
         # Isolate malformed messages and exporter failures from the MQTT network loop.
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning("Failed to parse message", topic=msg.topic, error=str(e))
+            logger.warning("Failed to parse message", topic=msg.topic, error=str(e), exc_info=True)
 
     def _parse_and_store(self, topic: str, value: str) -> None:
         for sys_metric in SYS_METRICS:
@@ -399,6 +399,7 @@ async def main() -> None:
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.add_log_level,
+            structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer()
             if config.logging.format == "json"
             else structlog.dev.ConsoleRenderer(),
