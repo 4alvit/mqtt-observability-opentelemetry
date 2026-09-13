@@ -1,6 +1,6 @@
 [project]
 name = "mosquitto-exporter"
-version = "0.1.0"
+version = "0.2.1"
 description = "Mosquitto $SYS metrics to OpenTelemetry/Prometheus exporter"
 authors = [{name = "4alvit", email = "dev@4alvit.com"}]
 license = {text = "MIT"}

@@ -1,3 +1,5 @@
+"""Collect broker statistics and export numeric OpenTelemetry measurements."""
+
 import asyncio
 import builtins
 import signal
@@ -22,6 +24,8 @@ logger = structlog.get_logger()
 
 @dataclass
 class SYSMetric:
+    """Describe a broker statistics topic and its exported numeric instrument."""
+
     topic: str
     name: str
     type: str
@@ -234,18 +238,21 @@ SYS_METRICS = [
 
 
 class SYSMetricsCollector:
+    """Receive broker statistics and expose them through configured metric readers."""
+
     def __init__(self, config: Config) -> None:
         self.config = config
         self.client: mqtt.Client | None = None
         self.metrics_data: dict[str, Any] = {}
         self.last_update: float = 0
+        self.otel_metrics: dict[str, Any] = {}
         self._setup_otel()
 
     def _setup_otel(self) -> None:
         resource = Resource.create(
             {
                 "service.name": self.config.otel.service_name,
-                "service.version": "0.1.0",
+                "service.version": "0.2.1",
                 **self.config.otel.resource_attributes,
             }
         )
@@ -271,11 +278,11 @@ class SYSMetricsCollector:
 
         provider = MeterProvider(resource=resource, metric_readers=readers)
         metrics.set_meter_provider(provider)
-        self.meter = metrics.get_meter(__name__, "0.1.0")
+        self.meter = metrics.get_meter(__name__, "0.2.1")
         self._create_otel_metrics()
 
     def _create_otel_metrics(self) -> None:
-        self.otel_metrics: dict[str, Any] = {}
+        self.otel_metrics = {}
         for sys_metric in SYS_METRICS:
             if sys_metric.type == "counter":
                 self.otel_metrics[sys_metric.name] = self.meter.create_counter(
@@ -293,21 +300,22 @@ class SYSMetricsCollector:
     def _on_connect(
         self,
         client: mqtt.Client,
-        userdata: Any,
-        flags: mqtt.ConnectFlags,
+        _userdata: Any,
+        _flags: mqtt.ConnectFlags,
         reason_code: mqtt.ReasonCode,
-        properties: mqtt.Properties | None,
+        _properties: mqtt.Properties | None,
     ) -> None:
         logger.info("Connected to Mosquitto", reason_code=reason_code)
         topics = [m.topic for m in SYS_METRICS]
         for topic in topics:
             client.subscribe(topic, qos=0)
 
-    def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+    def _on_message(self, _client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> None:
         try:
             value = msg.payload.decode().strip()
             self._parse_and_store(msg.topic, value)
-        except Exception as e:
+        # Isolate malformed messages and exporter failures from the MQTT network loop.
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to parse message", topic=msg.topic, error=str(e))
 
     def _parse_and_store(self, topic: str, value: str) -> None:
@@ -338,6 +346,7 @@ class SYSMetricsCollector:
             metric.set(value)
 
     async def start(self) -> None:
+        """Connect to the broker and run periodic metric exports until cancelled."""
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=self.config.mqtt.client_id,
@@ -376,12 +385,14 @@ class SYSMetricsCollector:
             self.stop()
 
     def stop(self) -> None:
+        """Stop the MQTT network loop and disconnect the collector."""
         if self.client:
             self.client.loop_stop()
             self.client.disconnect()
 
 
 async def main() -> None:
+    """Configure logging and coordinate collector shutdown on process signals."""
     config = load_config()
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(config.logging.level),
@@ -404,5 +415,6 @@ async def main() -> None:
 
 
 async def shutdown(collector: SYSMetricsCollector) -> None:
+    """Disconnect the collector in response to a process shutdown signal."""
     logger.info("Shutting down...")
     collector.stop()
