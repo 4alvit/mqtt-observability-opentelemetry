@@ -92,6 +92,8 @@ def build_candidate(
         raise ValueError("This repository only supports validation, not product releases")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Expected the numeric base release version X.Y.Z")
+    if channel not in {"nightly", "beta", "rc"}:
+        raise ValueError("Stable releases must promote an existing RC without rebuilding")
     if "versioning" in policy:
         subprocess.run(
             [
@@ -106,8 +108,6 @@ def build_candidate(
         )
     else:
         validate_versions(root, policy, version)
-    if channel not in {"nightly", "beta", "rc"}:
-        raise ValueError("Stable releases must promote an existing RC without rebuilding")
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):

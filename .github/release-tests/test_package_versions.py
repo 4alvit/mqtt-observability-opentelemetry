@@ -61,3 +61,21 @@ class PackageVersionTests(unittest.TestCase):
             PACKAGER.validate_versions(
                 self.root, {**self.policy, "version_companions": "exporter.toml"}, "0.2.1"
             )
+
+    def test_invalid_channel_is_rejected_before_adapter_execution(self) -> None:
+        """Direct callers cannot forward an unchecked channel to the version adapter."""
+        self.policy["versioning"] = {"schema": 1}
+        (self.root / ".release-policy.json").write_text(
+            json.dumps(self.policy), encoding="utf-8"
+        )
+        for channel in ("stable", "preview", "--root", "beta\nrc"):
+            with self.subTest(channel=channel):
+                with patch.object(PACKAGER.subprocess, "run") as run:
+                    with patch.object(PACKAGER, "snapshot") as snapshot:
+                        with self.assertRaisesRegex(ValueError, "promote an existing RC"):
+                            PACKAGER.build_candidate(
+                                self.root, "0.2.1", channel, self.output
+                            )
+                        run.assert_not_called()
+                        snapshot.assert_not_called()
+                self.assertFalse(self.output.exists())
