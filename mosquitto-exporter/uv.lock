@@ -397,7 +397,7 @@ wheels = [
 
 [[package]]
 name = "mosquitto-exporter"
-version = "0.1.0"
+version = "0.2.1"
 source = { virtual = "." }
 dependencies = [
     { name = "opentelemetry-api" },

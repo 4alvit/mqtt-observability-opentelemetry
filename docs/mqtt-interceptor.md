@@ -37,7 +37,7 @@ The MQTT Interceptor is a proxy that sits between MQTT clients and the broker, i
 |----------|---------|-------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otelcol:4317` | OTLP gRPC endpoint |
 | `OTEL_SERVICE_NAME` | `mqtt-interceptor` | Service name for telemetry |
-| `OTEL_SERVICE_VERSION` | `0.1.0` | Service version |
+| `OTEL_SERVICE_VERSION` | `0.2.1` | Service version |
 | `OTEL_RESOURCE_ATTRIBUTES` | - | Comma-separated key=value pairs |
 | `OTEL_EXPORTER_OTLP_INSECURE` | `true` | Use insecure connection |
 | `OTEL_EXPORTER_OTLP_TIMEOUT` | `10` | Export timeout in seconds |
@@ -165,7 +165,7 @@ def on_message(client, userdata, msg):
                 traceparent = v
             elif k == "tracestate":
                 tracestate = v
-    
+
     # Use trace context for correlation
     if traceparent:
         print(f"Trace: {traceparent}")
@@ -198,7 +198,7 @@ open http://localhost:16686
 graph LR
     Client[📱 Client :1884] --> Interceptor[🔍 Interceptor :1884]
     Interceptor --> Broker[🦟 Broker :1883]
-    
+
     Interceptor --> OTel[🔄 OpenTelemetry]
     OTel --> Jaeger[🔭 Jaeger\nTraces]
     OTel --> Prometheus[📈 Prometheus\nMetrics]

@@ -15,6 +15,8 @@ from mqtt_interceptor.config import (
     load_config,
 )
 
+# Public convenience exports intentionally match config.__all__.
+# pylint: disable=duplicate-code
 __all__ = [
     "MQTTInterceptor",
     "TopicSpanProcessor",
@@ -27,5 +29,6 @@ __all__ = [
     "LoggingConfig",
     "load_config",
 ]
+# pylint: enable=duplicate-code
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
