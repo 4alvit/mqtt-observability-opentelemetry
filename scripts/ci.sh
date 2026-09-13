@@ -43,6 +43,9 @@ print("Bandit scanned {} source lines without scanner errors or HIGH findings".f
 PYCODE
 )
 if [[ "${1:-}" == security || "${1:-}" == bandit ]]; then
+  # Run before the scanner in both local and generated reusable security gates.
+  uv run --project mqtt-interceptor --locked python scripts/host_monitoring_policy.py
+  uv run --project mqtt-interceptor --locked python -m unittest discover -s scripts/policy-tests -p 'test_*.py' -v
   run_bandit
   if [[ "${1:-}" == security ]]; then
     command -v trivy >/dev/null || { echo 'Trivy is required for the complete local security gate.' >&2; exit 1; }

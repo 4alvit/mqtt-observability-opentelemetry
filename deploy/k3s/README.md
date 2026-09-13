@@ -83,9 +83,24 @@ are therefore intentionally absent. Other configured collectors are preserved.
 The node exporter still observes the host network, PID namespace and read-only
 host filesystems, as required by the [pinned upstream deployment guidance](https://github.com/prometheus/node_exporter/blob/v1.8.2/README.md#docker).
 It runs as UID/GID 65534, drops all capabilities and receives no service-account
-token. Trivy still reports KSV-0009, KSV-0010, KSV-0024 and KSV-0121 for that
-workload. These four host-access findings require an explicit policy decision;
-they are not waived by the runtime hardening.
+token. On 2026-09-13 the operator explicitly approved KSV-0009, KSV-0010,
+KSV-0024 and KSV-0121 for this workload's existing host-monitoring access.
+`.trivyignore.yaml` scopes those four exceptions to this one literal file path;
+`trivy.yaml` explicitly selects that policy for local and hosted scans.
+
+The security job runs `scripts/host_monitoring_policy.py` and its negative tests
+before Bandit and Trivy. It checks both named resources, all non-root/read-only
+controls, capabilities, token policy, exact image, paths and mount propagation.
+A semantic fingerprint locks the complete reviewed DaemonSet and Service,
+including every additional field. New workloads, sidecars, host paths, altered
+arguments or a broader ignore policy fail before Trivy can apply the exceptions.
+Any future manifest change therefore needs its exception reviewed before updating
+the fingerprint. Other files and scanner findings remain subject to the unchanged
+HIGH/CRITICAL gate.
+
+The accepted residual risk remains: this process shares the host network and PID
+namespace and can read host metadata and world-readable files. The decision does
+not authorize write access, extra capabilities or additional host mounts.
 
 `python scripts/kubernetes_smoke.py` (with the locked MQTT-interceptor environment)
 checks the actual image identities, read-only roots, writable data volumes,

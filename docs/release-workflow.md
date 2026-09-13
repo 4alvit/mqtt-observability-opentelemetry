@@ -119,11 +119,14 @@ deployment volumes and a live Kubernetes deployment were not exercised.
 Kubernetes hardening removes default security contexts and writable root filesystems,
 with data/tmp mounts kept writable. Dashboard bootstrap no longer installs packages
 as root. Kube-state-metrics no longer watches Secrets; Prometheus drops unused kubelet
-proxy permissions. Native Trivy v0.74.0 reports four remaining HIGH findings, all
-for node-exporter's intentional host network/PID/port/read-only mounts (KSV-0009,
-KSV-0010, KSV-0024, KSV-0121). These require an explicit host-monitoring policy decision;
-no scanner exception or severity reduction has been applied. The CI gate includes a
-new isolated startup check for the hardened monitoring images and dashboard bootstrap.
+proxy permissions. The operator explicitly approved only node-exporter's intentional
+host network/PID/port/read-only mounts (KSV-0009, KSV-0010, KSV-0024, KSV-0121), scoped
+to `deploy/k3s/node-exporter.yaml`. The security job first checks a fail-closed workload
+contract and negative tests, then applies that exact file/ID policy. Native Trivy
+v0.74.0 reports no remaining HIGH/CRITICAL misconfigurations; an identical unapproved
+file still produces all four findings. No other scanner exception or severity reduction
+applies. Hosted startup validation passed for the hardened monitoring images and all
+four provisioned dashboards; no live Kubernetes deployment was performed.
 
 For public repositories, merge and verify the workflows before enabling the
 additive Terraform **CI gate** ruleset. Where release/deployment workflows use
