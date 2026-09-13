@@ -22,5 +22,8 @@
     "mosquitto-exporter-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/mosquitto-exporter",
     "test-publisher-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/test-publisher"
   },
-  "visibility": "public"
+  "visibility": "public",
+  "version_companions": [
+    "mosquitto-exporter/pyproject.toml"
+  ]
 }

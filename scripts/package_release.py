@@ -29,6 +29,16 @@ def read_version(root: Path, policy: dict[str, Any]) -> str:
     return str(value).removeprefix("v")
 
 
+def validate_versions(root: Path, policy: dict[str, Any], version: str) -> None:
+    """Reject mixed component versions before creating any candidate artifacts."""
+    companions = policy.get("version_companions", [])
+    if not isinstance(companions, list) or any(not isinstance(path, str) for path in companions):
+        raise ValueError("version_companions must be a list of metadata paths")
+    for path in [policy["version_file"], *companions]:
+        if read_version(root, {"version_file": path}) != version:
+            raise ValueError(f"Candidate version must match project metadata: {path}")
+
+
 def snapshot(root: Path, destination: Path) -> list[str]:
     """Copy tracked, present regular files; ignore untracked operator configuration."""
     names = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
@@ -77,8 +87,7 @@ def build_candidate(
         raise ValueError("This repository only supports validation, not product releases")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Expected the numeric base release version X.Y.Z")
-    if read_version(root, policy) != version:
-        raise ValueError("Candidate version must match project metadata")
+    validate_versions(root, policy, version)
     if channel not in {"nightly", "beta", "rc"}:
         raise ValueError("Stable releases must promote an existing RC without rebuilding")
     output = output.resolve()
