@@ -101,6 +101,30 @@ retrying. The tool refuses to overwrite them. Never rebuild an image for stable.
 
 - Both component unit suites and the isolated Compose integration smoke are required validation gates.
 
+### Startup validation repair (2026-09-13)
+
+The container entrypoints load each service implementation once, avoiding duplicate
+Prometheus metric registration. Mosquitto gauges record numeric samples under their
+individual metric names using the installed OpenTelemetry SDK. MQTT protocol versions
+and comma-separated or JSON topic lists now accept the environment syntax used by
+the Compose deployment. The three application images run as UID/GID 65532.
+The local pre-commit hook uses the same locked Ruff/mypy command as CI; its previous
+isolated Pylint environment installed only PyYAML and could not import either service.
+The existing secret and whitespace checks still run before commits.
+
+Validation passed with locked dependencies: Ruff, mypy, 31 interceptor tests,
+22 exporter tests, 38 release-tooling contracts, actionlint, and Bandit. The isolated
+local Compose smoke built the images, checked both metrics endpoints plus Jaeger and
+Prometheus readiness, published MQTT messages, confirmed traces in Jaeger, and removed
+its temporary containers, network and volumes. External TLS certificates, mounted
+deployment volumes and a live Kubernetes deployment were not exercised.
+
+The release migration remains blocked on the separate Kubernetes security findings:
+workload security contexts, writable root filesystems, kube-state-metrics Secret
+access, Prometheus node-proxy RBAC, and node-exporter host access. Remediate or review
+these deployment requirements with runtime acceptance before merge; the HIGH/CRITICAL
+gate and existing repository protections remain enforced.
+
 For public repositories, merge and verify the workflows before enabling the
 additive Terraform **CI gate** ruleset. Where release/deployment workflows use
 environments, configure reviewers and default-branch-only policies. The governance

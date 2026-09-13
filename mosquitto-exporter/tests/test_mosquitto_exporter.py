@@ -57,6 +57,11 @@ class TestMQTTConfig:
         assert config.client_id == "mosquitto-exporter"
         assert config.keepalive == 60
 
+    @pytest.mark.parametrize("version", ["3", "5"])
+    def test_version_from_environment(self, monkeypatch, version):
+        monkeypatch.setenv("MQTT_VERSION", version)
+        assert MQTTConfig().version == int(version)
+
 
 class TestOTelConfig:
     """Tests for OTEL configuration."""
@@ -181,7 +186,7 @@ class TestSYSMetricsCollector:
         mock_counter.add.assert_called_once_with(5)
 
     def test_record_metric_gauge(self):
-        """Test recording gauge metric (no-op for gauges)."""
+        """Record the latest numeric value on the named gauge."""
         config = Config()
         collector = create_mock_collector(config)
 
@@ -190,28 +195,7 @@ class TestSYSMetricsCollector:
         collector.otel_metrics["test_gauge"] = mock_gauge
 
         collector._record_metric("test_gauge", 42, "gauge")
-        # Gauges are handled via observable callback, no add call
-
-
-class TestCollectorCallbacks:
-    """Tests for collector observable callbacks."""
-
-    def test_observable_callback_returns_observations(self):
-        """Test observable callback returns proper observations."""
-        config = Config()
-        collector = create_mock_collector(config)
-
-        # Set some test data
-        collector.metrics_data["mosquitto_uptime_seconds"] = 3600
-        collector.metrics_data["mosquitto_clients_connected"] = 5
-
-        # Create a mock options object
-        options = MagicMock()
-
-        observations = collector._observable_callback(options)
-
-        # Should return observations for gauge metrics
-        assert isinstance(observations, list)
+        mock_gauge.set.assert_called_once_with(42)
 
 
 @pytest.mark.asyncio

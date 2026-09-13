@@ -1,6 +1,6 @@
 """Mosquitto Exporter - Prometheus/OpenTelemetry metrics exporter for Mosquitto MQTT broker."""
 
-from mosquitto_exporter.__main__ import (
+from mosquitto_exporter.app import (
     SYS_METRICS,
     SYSMetric,
     SYSMetricsCollector,

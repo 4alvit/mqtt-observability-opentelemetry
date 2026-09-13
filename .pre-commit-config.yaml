@@ -8,8 +8,11 @@ repos:
   hooks:
   - id: end-of-file-fixer
   - id: trailing-whitespace
-- repo: https://github.com/pylint-dev/pylint
-  rev: v4.0.6
+- repo: local
   hooks:
-  - id: pylint
-    additional_dependencies: [PyYAML==6.0.3]
+  - id: component-lint
+    name: Locked component lint and type checks
+    entry: bash scripts/ci.sh lint
+    language: system
+    pass_filenames: false
+    files: ^(mqtt-interceptor|mosquitto-exporter)/

@@ -25,4 +25,7 @@ ENV PROMETHEUS_PORT=9494
 ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
 ENV LOG_LEVEL=INFO
 
+# Services use unprivileged ports and do not need writable application files.
+USER 65532:65532
+
 CMD ["python", "-m", "mosquitto_exporter"]

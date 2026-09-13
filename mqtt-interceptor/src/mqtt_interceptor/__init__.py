@@ -1,6 +1,6 @@
 """MQTT Interceptor - MQTT message interception with OpenTelemetry tracing."""
 
-from mqtt_interceptor.__main__ import (
+from mqtt_interceptor.app import (
     MQTTInterceptor,
     TopicSpanProcessor,
     TraceContextPropagator,
