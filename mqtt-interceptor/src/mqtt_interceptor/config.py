@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class MQTTConfig(BaseSettings):
@@ -17,6 +17,12 @@ class MQTTConfig(BaseSettings):
     keepalive: int = Field(default=60)
     clean_start: bool = Field(default=True)
 
+    @field_validator("version", mode="before")
+    @classmethod
+    def parse_version(cls, value: int | str) -> int | str:
+        # Environment variables are strings; retain the supported-version validation.
+        return int(value) if value in ("3", "5") else value
+
     @property
     def upstream_address(self) -> str:
         return f"{self.upstream_host}:{self.upstream_port}"
@@ -26,7 +32,7 @@ class TraceConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRACE_", extra="ignore")
 
     propagator: Literal["w3c", "baggage", "mqtt-topic"] = Field(default="w3c")
-    topic_patterns: list[str] = Field(
+    topic_patterns: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["devices/+/telemetry", "devices/+/commands"]
     )
     sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -38,6 +44,10 @@ class TraceConfig(BaseSettings):
     @classmethod
     def parse_topic_patterns(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
+            if v.lstrip().startswith("["):
+                import json
+
+                return cast(list[str], json.loads(v))
             return [p.strip() for p in v.split(",") if p.strip()]
         return v
 

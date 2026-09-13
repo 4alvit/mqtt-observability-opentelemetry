@@ -19,9 +19,23 @@ spec:
     spec:
       # Survive DiskPressure longer than BestEffort / low-priority pods on small root disks.
       priorityClassName: observability-critical
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: tempo
           image: grafana/tempo:2.6.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           args:
             - -config.file=/etc/tempo/tempo.yaml
           ports:
@@ -37,6 +51,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /var/tempo
+            - name: temporary
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
@@ -58,6 +74,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: tempo-data
+        - name: temporary
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service

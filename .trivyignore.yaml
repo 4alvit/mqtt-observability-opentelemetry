@@ -1,0 +1,15 @@
+# Approved 2026-09-13 for the existing host-monitoring DaemonSet only.
+# scripts/host_monitoring_policy.py fails closed if this scope or workload changes.
+misconfigurations:
+  - id: AVD-KSV-0009
+    paths: [deploy/k3s/node-exporter.yaml]
+    statement: Approved host network visibility for node-exporter v1.8.2 host metrics; guarded workload only.
+  - id: AVD-KSV-0010
+    paths: [deploy/k3s/node-exporter.yaml]
+    statement: Approved host PID visibility required by the upstream node-exporter host-monitoring deployment.
+  - id: AVD-KSV-0024
+    paths: [deploy/k3s/node-exporter.yaml]
+    statement: Approved existing TCP 9100 listener in the host network namespace; guarded workload only.
+  - id: AVD-KSV-0121
+    paths: [deploy/k3s/node-exporter.yaml]
+    statement: Approved read-only /proc, /sys and / mounts for host kernel and filesystem metrics; no other hostPath.

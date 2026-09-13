@@ -18,44 +18,75 @@ spec:
         app: grafana
     spec:
       priorityClassName: observability-critical
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: fetch-dashboards
-          image: alpine:3.20
+          image: python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
           command:
-            - sh
+            - python
             - -c
             - |
-              set -eu
-              apk add --no-cache curl jq >/dev/null
-              DEST=/dashboards
-              fetch() {
-                id="$1"; out="$2"
-                echo "fetching grafana.com dashboard $id -> $out"
-                curl -fsSL "https://grafana.com/api/dashboards/${id}/revisions/latest/download" -o /tmp/raw.json
-                # Bare dashboard JSON or {dashboard: {...}}
-                if jq -e '.dashboard' /tmp/raw.json >/dev/null 2>&1; then
-                  jq '.dashboard | .id=null' /tmp/raw.json > "$DEST/$out"
-                else
-                  jq '.id=null' /tmp/raw.json > "$DEST/$out"
-                fi
-                # Point datasource refs at provisioned Prometheus uid
-                sed -i \
-                  -e 's/"uid":"${DS_PROMETHEUS}"/"uid":"Prometheus"/g' \
-                  -e 's/"uid": "${DS_PROMETHEUS}"/"uid":"Prometheus"/g' \
-                  -e 's/"datasource": "Prometheus"/"datasource": {"type":"prometheus","uid":"Prometheus"}/g' \
-                  "$DEST/$out" || true
+              import json
+              from pathlib import Path
+              from urllib.request import urlopen
+
+              def normalize(value):
+                  if isinstance(value, list):
+                      return [normalize(item) for item in value]
+                  if isinstance(value, dict):
+                      result = {key: normalize(item) for key, item in value.items()}
+                      if result.get("uid") == "${DS_PROMETHEUS}":
+                          result["uid"] = "Prometheus"
+                      if result.get("datasource") in ("Prometheus", "${DS_PROMETHEUS}"):
+                          result["datasource"] = {"type": "prometheus", "uid": "Prometheus"}
+                      return result
+                  return value
+
+              dashboards = {
+                  1860: "node-exporter-full.json",
+                  15760: "k8s-views-pods.json",
+                  6417: "k8s-cluster-prometheus.json",
+                  7249: "k8s-cluster.json",
               }
-              fetch 1860 node-exporter-full.json
-              fetch 15760 k8s-views-pods.json
-              fetch 6417 k8s-cluster-prometheus.json
-              fetch 7249 k8s-cluster.json
-              ls -la "$DEST"
+              for dashboard_id, filename in dashboards.items():
+                  url = f"https://grafana.com/api/dashboards/{dashboard_id}/revisions/latest/download"
+                  with urlopen(url, timeout=60) as response:
+                      payload = json.load(response)
+                  dashboard = normalize(payload.get("dashboard", payload))
+                  dashboard["id"] = None
+                  Path("/dashboards", filename).write_text(json.dumps(dashboard), encoding="utf-8")
+                  print(f"Provisioned {filename}", flush=True)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           volumeMounts:
             - name: dashboards
               mountPath: /dashboards
       containers:
         - name: grafana
           image: grafana/grafana:11.2.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           ports:
             - containerPort: 3000
               name: http
@@ -76,6 +107,8 @@ spec:
               value: "https://grafana.k3s.2560801.xyz/"
             - name: GF_ANALYTICS_REPORTING_ENABLED
               value: "false"
+            - name: GF_PATHS_LOGS
+              value: /var/lib/grafana/logs
           volumeMounts:
             - name: data
               mountPath: /var/lib/grafana
@@ -88,6 +121,8 @@ spec:
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards
               readOnly: true
+            - name: temporary
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
@@ -118,6 +153,9 @@ spec:
             name: grafana-dashboards-provider
         - name: dashboards
           emptyDir: {}
+        - name: temporary
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service

@@ -19,9 +19,22 @@ spec:
     spec:
       priorityClassName: observability-critical
       serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: prometheus
           image: prom/prometheus:v2.54.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           args:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus
@@ -36,6 +49,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /prometheus
+            - name: temporary
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
@@ -61,6 +76,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: prometheus-data
+        - name: temporary
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -74,7 +92,8 @@ metadata:
   name: observability-prometheus
 rules:
   - apiGroups: [""]
-    resources: [nodes, nodes/metrics, nodes/proxy, services, endpoints, pods]
+    # The configured jobs discover pods/endpoints; none scrape the kubelet proxy.
+    resources: [nodes, services, endpoints, pods]
     verbs: [get, list, watch]
   - apiGroups: [networking.k8s.io]
     resources: [ingresses]

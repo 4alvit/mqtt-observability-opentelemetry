@@ -1,0 +1,2 @@
+# YAML ignore files require explicit selection; all scanners retain their existing gates.
+ignorefile: .trivyignore.yaml

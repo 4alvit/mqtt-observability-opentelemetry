@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,11 @@ class MQTTConfig(BaseSettings):
     tls_ca_cert: str | None = None
     tls_certfile: str | None = None
     tls_keyfile: str | None = None
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def parse_version(cls, value: int | str) -> int | str:
+        return int(value) if value in ("3", "5") else value
 
 
 class OTelConfig(BaseSettings):

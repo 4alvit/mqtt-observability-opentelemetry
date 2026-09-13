@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "repository": "4alvit/mqtt-observability-opentelemetry",
+  "mode": "release",
+  "default_branch": "main",
+  "validation_workflows": [
+    "ci.yml",
+    "codeql.yml",
+    "release-security.yml"
+  ],
+  "artifact_pattern": "release-assets*",
+  "version_file": "mqtt-interceptor/pyproject.toml",
+  "local_checks": [
+    "bash scripts/ci.sh",
+    "bash scripts/ci.sh security"
+  ],
+  "notes": [
+    "Both component unit suites and the isolated Compose integration smoke are required validation gates."
+  ],
+  "container_assets": {
+    "mqtt-interceptor-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/mqtt-interceptor",
+    "mosquitto-exporter-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/mosquitto-exporter",
+    "test-publisher-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/test-publisher"
+  },
+  "visibility": "public"
+}

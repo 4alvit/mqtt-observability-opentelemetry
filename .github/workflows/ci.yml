@@ -1,256 +1,106 @@
 name: CI/CD
-
-on:
-  push:
-    branches: [main, develop]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '**.json'
-    tags: ['v*']
-  pull_request:
-    branches: [main, develop]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '**.json'
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   lint:
-    name: Lint & Type Check
+    name: Lint and type checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
         component:
-          - mqtt-interceptor
-          - mosquitto-exporter
+        - mqtt-interceptor
+        - mosquitto-exporter
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        working-directory: ${{ matrix.component }}
-        run: |
-          uv pip install --system -e ".[dev]"
-
-      - name: Run ruff (lint)
-        working-directory: ${{ matrix.component }}
-        run: |
-          uv run ruff check src/
-
-      - name: Run ruff (format)
-        working-directory: ${{ matrix.component }}
-        run: |
-          uv run ruff format --check src/
-
-      - name: Run mypy
-        working-directory: ${{ matrix.component }}
-        run: |
-          uv run mypy src/
-
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install uv
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      with:
+        enable-cache: true
+        version: 0.12.7
+    - name: Run the local component contract
+      env:
+        COMPONENT: ${{ matrix.component }}
+      run: bash scripts/ci.sh lint "$COMPONENT"
   test:
-    name: Tests
+    name: Unit tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
         component:
-          - mqtt-interceptor
-          - mosquitto-exporter
+        - mqtt-interceptor
+        - mosquitto-exporter
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        working-directory: ${{ matrix.component }}
-        run: |
-          uv pip install --system -e ".[dev]"
-
-      - name: Run pytest
-        working-directory: ${{ matrix.component }}
-        run: |
-          set +e
-          uv run pytest tests/ -v --tb=short
-          status=$?
-          set -e
-          # 5 = no tests collected (tolerate); anything else must fail
-          if [ $status -eq 0 ] || [ $status -eq 5 ]; then
-            exit 0
-          fi
-          exit $status
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          files: ${{ matrix.component }}/coverage.xml
-          flags: ${{ matrix.component }}
-
-  docker:
-    name: Build & Push Docker Images
-    needs: [lint, test]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-    strategy:
-      matrix:
-        component:
-          - name: mqtt-interceptor
-            context: mqtt-interceptor
-          - name: mosquitto-exporter
-            context: mosquitto-exporter
-          - name: test-publisher
-            context: docker/test-publisher
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.component.name }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: ${{ matrix.component.context }}
-          file: ${{ matrix.component.context }}/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: true
-          sbom: true
-
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install uv
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      with:
+        enable-cache: true
+        version: 0.12.7
+    - name: Run the local component contract
+      env:
+        COMPONENT: ${{ matrix.component }}
+      run: bash scripts/ci.sh test "$COMPONENT"
   docker-compose-test:
     name: Docker Compose Integration Test
-    needs: [lint, test]
+    needs:
+    - lint
+    - test
     runs-on: ubuntu-latest
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build images
-        working-directory: docker
-        run: |
-          docker compose build --parallel
-
-      - name: Start services
-        working-directory: docker
-        run: |
-          docker compose up -d mosquitto mqtt-interceptor mosquitto-exporter otelcol prometheus jaeger
-          sleep 60
-
-      - name: Health checks
-        working-directory: docker
-        run: |
-          docker compose ps
-          for i in {1..10}; do curl -f http://localhost:9494/metrics && break || sleep 5; done
-          for i in {1..10}; do curl -f http://localhost:9464/metrics && break || sleep 5; done
-          curl -f http://localhost:16686/
-          curl -f http://localhost:9090/-/healthy
-
-      - name: Test message flow
-        working-directory: docker
-        run: |
-          # Use docker compose run (one-off, doesn't restart dependencies)
-          docker compose run --rm mqtt-test-publisher &
-          sleep 25
-          # Check traces appear in Jaeger
-          curl -s "http://localhost:16686/api/traces?service=mqtt-interceptor&lookback=1h" | jq '.data | length'
-
-      - name: Teardown
-        if: always()
-        working-directory: docker
-        run: |
-          docker compose down -v
-
-  release:
-    name: Create Release
-    needs: [docker]
-    if: startsWith(github.ref, 'refs/tags/v')
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      with:
+        version: 0.12.7
+    - name: Run isolated Compose smoke with readiness and trace assertions
+      run: bash scripts/ci.sh integration
+    timeout-minutes: 20
+  kubernetes-runtime:
+    name: Hardened monitoring image startup
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 15
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %s (%an)" > CHANGELOG.md
-          cat CHANGELOG.md
-
-      - name: Create Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          body_path: CHANGELOG.md
-          draft: false
-          prerelease: ${{ contains(github.ref, 'rc') || contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      with:
+        version: 0.12.7
+    - name: Check rendered Kubernetes configuration
+      run: kubectl kustomize deploy/k3s > "$RUNNER_TEMP/monitoring.yaml"
+    - name: Check non-root startup, writable data volumes and dashboard provisioning
+      run: uv run --project mqtt-interceptor --locked python scripts/kubernetes_smoke.py
+'on':
+  push:
+    branches:
+    - main
+    - develop
+  pull_request:
+    branches:
+    - main
+    - develop
+  workflow_call: {}

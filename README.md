@@ -13,6 +13,12 @@
 
 A complete observability stack for MQTT-based IoT systems.
 
+<!-- ci-release-process:start -->
+## Release process
+
+See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
+<!-- ci-release-process:end -->
+
 ## Quick Start
 
 ```bash
@@ -206,3 +212,8 @@ MIT License - see [LICENSE](LICENSE)
 **Choose this repo if:** You need MQTT observability for any IoT system (industrial, home automation, custom devices).
 
 **Choose venus-os-observability if:** You are running Victron Venus OS (Cerbo GX, Raspberry Pi with Venus OS) and need D-Bus integration, inverter-specific metrics, and Venus OS native deployment.
+
+
+### Reviewed infrastructure deployment
+
+The k3s observability stack uses third-party pinned images and configuration from this repository; it is separate from the MQTT component image releases. Deploy it with the manual `Deploy k3s` workflow and the exact default-branch `source_sha`, after the CI gate and production-environment approval. Locally, `SOURCE_SHA=<full SHA> bash deploy/k3s/deploy.sh --render` renders without applying; add `--apply` only for the reviewed committed configuration. Failed rollouts now fail the command.
