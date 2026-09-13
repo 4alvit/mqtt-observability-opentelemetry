@@ -108,9 +108,6 @@ Prometheus metric registration. Mosquitto gauges record numeric samples under th
 individual metric names using the installed OpenTelemetry SDK. MQTT protocol versions
 and comma-separated or JSON topic lists now accept the environment syntax used by
 the Compose deployment. The three application images run as UID/GID 65532.
-The local pre-commit hook uses the same locked Ruff/mypy command as CI; its previous
-isolated Pylint environment installed only PyYAML and could not import either service.
-The existing secret and whitespace checks still run before commits.
 
 Validation passed with locked dependencies: Ruff, mypy, 31 interceptor tests,
 22 exporter tests, 38 release-tooling contracts, actionlint, and Bandit. The isolated
