@@ -21,7 +21,6 @@ rules:
       - pods
       - replicationcontrollers
       - resourcequotas
-      - secrets
       - services
     verbs: [list, watch]
   - apiGroups: [apps]
@@ -104,6 +103,12 @@ spec:
     spec:
       serviceAccountName: kube-state-metrics
       priorityClassName: observability-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -120,6 +125,8 @@ spec:
           args:
             - --port=8080
             - --telemetry-port=8081
+            # v2.13 defaults without Secrets: never request their contents from the API.
+            - --resources=certificatesigningrequests,configmaps,cronjobs,daemonsets,deployments,endpoints,horizontalpodautoscalers,ingresses,jobs,leases,limitranges,mutatingwebhookconfigurations,namespaces,networkpolicies,nodes,persistentvolumeclaims,persistentvolumes,poddisruptionbudgets,pods,replicasets,replicationcontrollers,resourcequotas,services,statefulsets,storageclasses,validatingwebhookconfigurations,volumeattachments
           ports:
             - name: http-metrics
               containerPort: 8080
@@ -148,6 +155,8 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 65534
+            capabilities:
+              drop: [ALL]
 ---
 apiVersion: v1
 kind: Service

@@ -116,11 +116,14 @@ Prometheus readiness, published MQTT messages, confirmed traces in Jaeger, and r
 its temporary containers, network and volumes. External TLS certificates, mounted
 deployment volumes and a live Kubernetes deployment were not exercised.
 
-The release migration remains blocked on the separate Kubernetes security findings:
-workload security contexts, writable root filesystems, kube-state-metrics Secret
-access, Prometheus node-proxy RBAC, and node-exporter host access. Remediate or review
-these deployment requirements with runtime acceptance before merge; the HIGH/CRITICAL
-gate and existing repository protections remain enforced.
+Kubernetes hardening removes default security contexts and writable root filesystems,
+with data/tmp mounts kept writable. Dashboard bootstrap no longer installs packages
+as root. Kube-state-metrics no longer watches Secrets; Prometheus drops unused kubelet
+proxy permissions. Native Trivy v0.74.0 reports four remaining HIGH findings, all
+for node-exporter's intentional host network/PID/port/read-only mounts (KSV-0009,
+KSV-0010, KSV-0024, KSV-0121). These require an explicit host-monitoring policy decision;
+no scanner exception or severity reduction has been applied. The CI gate includes a
+new isolated startup check for the hardened monitoring images and dashboard bootstrap.
 
 For public repositories, merge and verify the workflows before enabling the
 additive Terraform **CI gate** ruleset. Where release/deployment workflows use

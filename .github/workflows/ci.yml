@@ -78,6 +78,22 @@ jobs:
     - name: Run isolated Compose smoke with readiness and trace assertions
       run: bash scripts/ci.sh integration
     timeout-minutes: 20
+  kubernetes-runtime:
+    name: Hardened monitoring image startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      with:
+        version: 0.12.7
+    - name: Check rendered Kubernetes configuration
+      run: kubectl kustomize deploy/k3s > "$RUNNER_TEMP/monitoring.yaml"
+    - name: Check non-root startup, writable data volumes and dashboard provisioning
+      run: uv run --project mqtt-interceptor --locked python scripts/kubernetes_smoke.py
 'on':
   push:
     branches:
