@@ -1,10 +1,12 @@
 """Tests for MQTT Interceptor."""
 
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import paho.mqtt.client as mqtt
 import pytest
+from opentelemetry import trace
+from opentelemetry.trace import SpanContext, TraceFlags, TraceState
 
 from mqtt_interceptor import (
     MQTTInterceptor,
@@ -34,8 +36,8 @@ class TestTraceContextPropagator:
         span_context = propagator.extract(None, user_properties)
 
         assert span_context is not None
-        assert span_context.trace_id == 0x0af7651916cd43dd8448eb211c80319c
-        assert span_context.span_id == 0xb7ad6b7169203331
+        assert span_context.trace_id == 0x0AF7651916CD43DD8448EB211C80319C
+        assert span_context.span_id == 0xB7AD6B7169203331
         assert span_context.trace_flags == 0x01
 
     def test_extract_from_mqtt5_properties(self):
@@ -49,7 +51,7 @@ class TestTraceContextPropagator:
         span_context = propagator.extract(properties, None)
 
         assert span_context is not None
-        assert span_context.trace_id == 0x0af7651916cd43dd8448eb211c80319c
+        assert span_context.trace_id == 0x0AF7651916CD43DD8448EB211C80319C
 
     def test_extract_returns_none_when_missing(self):
         """Test extraction returns None when trace context is missing."""
@@ -68,17 +70,15 @@ class TestTraceContextPropagator:
         """Test injecting trace context into message properties."""
         propagator = TraceContextPropagator("w3c")
 
-        from opentelemetry.trace import SpanContext, TraceFlags, TraceState
-
         span_context = SpanContext(
-            trace_id=0x0af7651916cd43dd8448eb211c80319c,
-            span_id=0xb7ad6b7169203331,
+            trace_id=0x0AF7651916CD43DD8448EB211C80319C,
+            span_id=0xB7AD6B7169203331,
             is_remote=True,
             trace_flags=TraceFlags(0x01),
             trace_state=TraceState(),
         )
 
-        properties, user_properties = propagator.inject(None, [], span_context)
+        _properties, user_properties = propagator.inject(None, [], span_context)
 
         assert user_properties is not None
         traceparent_found = False
@@ -94,7 +94,6 @@ class TestTopicSpanProcessor:
 
     def test_matches_exact_topic(self):
         """Test pattern matching with exact topic."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/sensor-001/telemetry"], 1.0)
 
@@ -104,7 +103,6 @@ class TestTopicSpanProcessor:
 
     def test_matches_wildcard_plus(self):
         """Test pattern matching with + wildcard."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/+/telemetry"], 1.0)
 
@@ -114,7 +112,6 @@ class TestTopicSpanProcessor:
 
     def test_matches_wildcard_hash(self):
         """Test pattern matching with # wildcard."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/#"], 1.0)
 
@@ -124,7 +121,6 @@ class TestTopicSpanProcessor:
 
     def test_no_match(self):
         """Test non-matching topic returns False."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/+/telemetry"], 1.0)
 
@@ -134,7 +130,6 @@ class TestTopicSpanProcessor:
 
     def test_extract_attributes_from_wildcard(self):
         """Test attribute extraction from wildcard topics."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/+/telemetry"], 1.0)
 
@@ -146,7 +141,6 @@ class TestTopicSpanProcessor:
 
     def test_should_sample_zero_rate(self):
         """Test sampling with rate 0 returns False."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/+/telemetry"], 0.0)
 
@@ -155,7 +149,6 @@ class TestTopicSpanProcessor:
 
     def test_should_sample_full_rate(self):
         """Test sampling with rate 1 returns True."""
-        from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
         processor = TopicSpanProcessor(tracer, ["devices/+/telemetry"], 1.0)
 
@@ -263,7 +256,7 @@ trace:
 
         # Ensure no env vars interfere
         for key in list(os.environ.keys()):
-            if key.startswith(('MQTT_', 'TRACE_', 'OTEL_', 'METRICS_', 'LOG_')):
+            if key.startswith(("MQTT_", "TRACE_", "OTEL_", "METRICS_", "LOG_")):
                 monkeypatch.delenv(key, raising=False)
 
         config = load_config(config_file)
@@ -295,17 +288,18 @@ class TestMQTTInterceptor:
         config = Config()
 
         with patch("paho.mqtt.client.Client") as mock_client_class:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client_class.return_value = mock_client
 
             interceptor = MQTTInterceptor(config)
 
-            with patch("prometheus_client.start_http_server"):
+            with patch("mqtt_interceptor.app.start_http_server") as start_http_server:
                 await interceptor.start()
                 assert interceptor.running is True
                 mock_client.connect.assert_called_once()
                 mock_client.loop_start.assert_called_once()
 
+            start_http_server.assert_called_once_with(config.metrics.port)
             await interceptor.stop()
             assert interceptor.running is False
             mock_client.loop_stop.assert_called_once()
