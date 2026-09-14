@@ -37,8 +37,8 @@ pushes request beta builds through the same validation and build gates. Publicat
 also requires the opt-in variable and an eligible unreleased base version. GitHub can delay
 scheduled runs; schedule timing is not an SLA. A committed base version (`X.Y.Z`)
 is required. Version changes go through PR review, including any native companion
-version files. Native binaries keep that base version; the release manifest records
-the beta/RC/nightly channel and exact source SHA.
+version files. The frozen release plan supplies full candidate versions to declared
+format adapters before compilation; the manifest binds the plan and build receipts.
 
 From a clean checkout matching GitHub's default-branch HEAD:
 
@@ -101,33 +101,6 @@ retrying. The tool refuses to overwrite them. Never rebuild an image for stable.
 
 - Both component unit suites and the isolated Compose integration smoke are required validation gates.
 
-### Startup validation repair (2026-09-13)
-
-The container entrypoints load each service implementation once, avoiding duplicate
-Prometheus metric registration. Mosquitto gauges record numeric samples under their
-individual metric names using the installed OpenTelemetry SDK. MQTT protocol versions
-and comma-separated or JSON topic lists now accept the environment syntax used by
-the Compose deployment. The three application images run as UID/GID 65532.
-
-Validation passed with locked dependencies: Ruff, mypy, 31 interceptor tests,
-22 exporter tests, 38 release-tooling contracts, actionlint, and Bandit. The isolated
-local Compose smoke built the images, checked both metrics endpoints plus Jaeger and
-Prometheus readiness, published MQTT messages, confirmed traces in Jaeger, and removed
-its temporary containers, network and volumes. External TLS certificates, mounted
-deployment volumes and a live Kubernetes deployment were not exercised.
-
-Kubernetes hardening removes default security contexts and writable root filesystems,
-with data/tmp mounts kept writable. Dashboard bootstrap no longer installs packages
-as root. Kube-state-metrics no longer watches Secrets; Prometheus drops unused kubelet
-proxy permissions. The operator explicitly approved only node-exporter's intentional
-host network/PID/port/read-only mounts (KSV-0009, KSV-0010, KSV-0024, KSV-0121), scoped
-to `deploy/k3s/node-exporter.yaml`. The security job first checks a fail-closed workload
-contract and negative tests, then applies that exact file/ID policy. Native Trivy
-v0.74.0 reports no remaining HIGH/CRITICAL misconfigurations; an identical unapproved
-file still produces all four findings. No other scanner exception or severity reduction
-applies. Hosted startup validation passed for the hardened monitoring images and all
-four provisioned dashboards; no live Kubernetes deployment was performed.
-
 For public repositories, merge and verify the workflows before enabling the
 additive Terraform **CI gate** ruleset. Where release/deployment workflows use
 environments, configure reviewers and default-branch-only policies. The governance
@@ -147,3 +120,9 @@ projects receive the local client, whose contracts run in the toolkit. Update th
 References: [GitHub schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule),
 [protected environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments),
 [artifact provenance](https://docs.github.com/en/rest/actions/artifacts).
+
+## Automatic version preparation
+
+Run `python3 scripts/release.py prepare-version --pr` from the clean default-branch HEAD. The command refreshes tags and opens a PR with synchronized owned version fields. An existing unreleased base is retained; use `--bump minor`, `--bump major`, or `--version X.Y.Z` for explicit intent. See [version plans](VERSIONING.md) for build overlays, the dedicated allocation ledger and recovery.
+
+A local candidate package also needs the saved `.release-plan.json` at its exact source commit. Restore the `version_plan` object from the published `release-manifest.json` into a disposable checkout before `release.py package`; do not invent a tag or native counter locally. Ordinary development builds can use the project's native build command and explicitly local version identity.

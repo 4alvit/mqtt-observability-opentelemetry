@@ -25,5 +25,102 @@
   "visibility": "public",
   "version_companions": [
     "mosquitto-exporter/pyproject.toml"
-  ]
+  ],
+  "versioning": {
+    "schema": 1,
+    "promotion": "promote-bytes",
+    "files": [
+      {
+        "path": "mqtt-interceptor/pyproject.toml",
+        "format": "toml",
+        "value": "package",
+        "field": "project.version",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mqtt-interceptor/uv.lock",
+        "format": "uv-lock",
+        "value": "package",
+        "package": "mqtt-interceptor",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mosquitto-exporter/pyproject.toml",
+        "format": "toml",
+        "value": "package",
+        "field": "project.version",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mosquitto-exporter/uv.lock",
+        "format": "uv-lock",
+        "value": "package",
+        "package": "mosquitto-exporter",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mqtt-interceptor/src/mqtt_interceptor/_version.py",
+        "format": "python",
+        "value": "package",
+        "field": "__version__",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mosquitto-exporter/src/mosquitto_exporter/_version.py",
+        "format": "python",
+        "value": "package",
+        "field": "__version__",
+        "ecosystem": "pep440"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "mqtt-observability-opentelemetry-*.tar.gz",
+        "format": "tar-toml",
+        "value": "package",
+        "member": "mqtt-observability-opentelemetry/mqtt-interceptor/pyproject.toml",
+        "field": "project.version",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mqtt-observability-opentelemetry-*.tar.gz",
+        "format": "tar-toml",
+        "value": "package",
+        "member": "mqtt-observability-opentelemetry/mosquitto-exporter/pyproject.toml",
+        "field": "project.version",
+        "ecosystem": "pep440"
+      },
+      {
+        "path": "mqtt-interceptor-container.oci.tar",
+        "format": "oci",
+        "field": [
+          "config",
+          "Labels",
+          "org.opencontainers.image.version"
+        ],
+        "value": "package"
+      },
+      {
+        "path": "mosquitto-exporter-container.oci.tar",
+        "format": "oci",
+        "field": [
+          "config",
+          "Labels",
+          "org.opencontainers.image.version"
+        ],
+        "value": "package"
+      },
+      {
+        "path": "test-publisher-container.oci.tar",
+        "format": "oci",
+        "field": [
+          "config",
+          "Labels",
+          "org.opencontainers.image.version"
+        ],
+        "value": "package"
+      }
+    ],
+    "toolkit_revision": "5671b9a05817576a8ae6bd69cacfb3202c60ad0a"
+  }
 }

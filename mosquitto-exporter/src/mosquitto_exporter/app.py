@@ -17,6 +17,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from prometheus_client import start_http_server
 
+from mosquitto_exporter._version import __version__
 from mosquitto_exporter.config import Config, load_config
 
 logger = structlog.get_logger()
@@ -252,7 +253,7 @@ class SYSMetricsCollector:
         resource = Resource.create(
             {
                 "service.name": self.config.otel.service_name,
-                "service.version": "0.2.1",
+                "service.version": __version__,
                 **self.config.otel.resource_attributes,
             }
         )
@@ -278,7 +279,7 @@ class SYSMetricsCollector:
 
         provider = MeterProvider(resource=resource, metric_readers=readers)
         metrics.set_meter_provider(provider)
-        self.meter = metrics.get_meter(__name__, "0.2.1")
+        self.meter = metrics.get_meter(__name__, __version__)
         self._create_otel_metrics()
 
     def _create_otel_metrics(self) -> None:

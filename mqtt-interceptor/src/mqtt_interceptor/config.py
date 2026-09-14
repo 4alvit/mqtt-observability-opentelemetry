@@ -8,6 +8,8 @@ import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from mqtt_interceptor._version import __version__
+
 
 class MQTTConfig(BaseSettings):
     """Broker connection settings and supported MQTT protocol versions."""
@@ -68,7 +70,7 @@ class OTELConfig(BaseSettings):
 
     endpoint: str = Field(default="http://otelcol:4317")
     service_name: str = Field(default="mqtt-interceptor")
-    service_version: str = Field(default="0.2.1")
+    service_version: str = Field(default=__version__)
     resource_attributes: dict[str, str] = Field(default={})
     insecure: bool = Field(default=True)
     timeout: int = Field(default=10)

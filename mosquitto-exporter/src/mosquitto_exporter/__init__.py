@@ -1,5 +1,8 @@
 """Mosquitto Exporter - Prometheus/OpenTelemetry metrics exporter for Mosquitto MQTT broker."""
 
+# Explicit re-export retains the existing package attribute.
+# pylint: disable-next=useless-import-alias
+from mosquitto_exporter._version import __version__ as __version__
 from mosquitto_exporter.app import (
     SYS_METRICS,
     SYSMetric,
@@ -29,5 +32,3 @@ __all__ = [
     "load_config",
     "get_config",
 ]
-
-__version__ = "0.2.1"

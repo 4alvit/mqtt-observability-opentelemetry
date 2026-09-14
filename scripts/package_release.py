@@ -42,6 +42,11 @@ def validate_versions(root: Path, policy: dict[str, Any], version: str) -> None:
 def snapshot(root: Path, destination: Path) -> list[str]:
     """Copy tracked, present regular files; ignore untracked operator configuration."""
     names = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
+    names += [
+        name
+        for name in (".release-plan.json", ".release-inputs.json")
+        if (root / name).is_file() and not (root / name).is_symlink()
+    ]
     selected = []
     for name in sorted(set(filter(None, names))):
         source = root / name
@@ -87,9 +92,22 @@ def build_candidate(
         raise ValueError("This repository only supports validation, not product releases")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("Expected the numeric base release version X.Y.Z")
-    validate_versions(root, policy, version)
     if channel not in {"nightly", "beta", "rc"}:
         raise ValueError("Stable releases must promote an existing RC without rebuilding")
+    if "versioning" in policy:
+        subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("release_version_adapter.py")),
+                version,
+                channel,
+                "--root",
+                str(root),
+            ],
+            check=True,
+        )
+    else:
+        validate_versions(root, policy, version)
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -106,7 +124,9 @@ def build_candidate(
         archive_names = [
             name
             for name in names
-            if not includes or any(name == item or name.startswith(item + "/") for item in includes)
+            if name in {".release-plan.json", ".release-inputs.json"}
+            or not includes
+            or any(name == item or name.startswith(item + "/") for item in includes)
         ]
         archive(source, archive_names, output / f"{project}-{version}.tar.gz", project)
         if config.get("python_distribution"):
@@ -144,6 +164,21 @@ def build_candidate(
                 check=True,
             )
         if containers and config.get("containers"):
+            label_values = (
+                json.loads(
+                    subprocess.check_output(
+                        [sys.executable, str(root / "scripts/release_container_labels.py")],
+                        text=True,
+                    )
+                )
+                if "versioning" in policy
+                else {}
+            )
+            label_args = [
+                value
+                for key, label in label_values.items()
+                for value in ("--label", f"{key}={label}")
+            ]
             host = subprocess.check_output(
                 ["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
                 text=True,
@@ -165,6 +200,7 @@ def build_candidate(
                         "docker",
                         "buildx",
                         "build",
+                        *label_args,
                         "--platform",
                         image.get("platforms", "linux/amd64"),
                         "--provenance=true",

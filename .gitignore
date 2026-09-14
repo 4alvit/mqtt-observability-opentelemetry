@@ -84,3 +84,7 @@ release-dist/
 .release-download/
 .release-assets/
 .release-evidence/
+# Frozen release overlays and final build staging
+.release-plan.json
+.release-inputs.json
+release-assets/
