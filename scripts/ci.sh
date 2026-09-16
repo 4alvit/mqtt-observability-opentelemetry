@@ -53,6 +53,8 @@ if [[ "${1:-}" == security || "${1:-}" == bandit ]]; then
   fi
   exit 0
 fi
+# Recovery checks have no cluster, SSH, Docker or credential dependency.
+python3 -m unittest discover -s tests/recovery -p 'test_*.py' -v
 mode="${1:-all}"
 [[ "$mode" =~ ^(all|lint|test|integration)$ ]] || { echo 'Usage: ci.sh [lint|test|integration|security] [component]' >&2; exit 2; }
 components=(mqtt-interceptor mosquitto-exporter)

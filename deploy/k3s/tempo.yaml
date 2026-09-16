@@ -17,6 +17,8 @@ spec:
       labels:
         app: tempo
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: mp
       # Survive DiskPressure longer than BestEffort / low-priority pods on small root disks.
       priorityClassName: observability-critical
       automountServiceAccountToken: false
@@ -30,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: tempo
-          image: grafana/tempo:2.6.1
+          image: grafana/tempo:2.6.1@sha256:ef4384fce6e8ad22b95b243d8fc165628cda655376fd50e7850536ad89d71d50
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -73,7 +75,7 @@ spec:
             name: tempo-config
         - name: data
           persistentVolumeClaim:
-            claimName: tempo-data
+            claimName: tempo-data-mp
         - name: temporary
           emptyDir:
             sizeLimit: 128Mi

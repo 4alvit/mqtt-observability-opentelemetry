@@ -12,9 +12,12 @@ repos:
   rev: v4.0.6
   hooks:
   - id: pylint
+    # Byte-identical reviewed upstream code: linting must not rewrite its provenance.
+    # Security scanners still inspect every helper; the local hash test below is mandatory.
+    exclude: ^recovery/(archive|restore|prepare)\.py$
     args:
     - --load-plugins=pylint_pydantic
-    - --init-hook=import sys; sys.path[:0] = ["mqtt-interceptor/src", "mosquitto-exporter/src"]
+    - --init-hook=import sys; sys.path[:0] = ["mqtt-interceptor/src", "mosquitto-exporter/src", "scripts"]
     additional_dependencies:
     - pylint-pydantic==0.4.0
     - pytest==9.1.1
@@ -29,3 +32,12 @@ repos:
     - opentelemetry-exporter-prometheus==0.65b0
     - structlog==26.1.0
     - prometheus-client==0.26.0
+
+- repo: local
+  hooks:
+  - id: recovery-boundaries
+    name: recovery boundaries and immutable helper provenance
+    entry: python3 -m unittest discover -s tests/recovery -p test_*.py
+    language: system
+    pass_filenames: false
+    always_run: true

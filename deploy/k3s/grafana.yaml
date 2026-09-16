@@ -17,6 +17,8 @@ spec:
       labels:
         app: grafana
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: mp
       priorityClassName: observability-critical
       automountServiceAccountToken: false
       securityContext:
@@ -27,61 +29,9 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: fetch-dashboards
-          image: python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
-          command:
-            - python
-            - -c
-            - |
-              import json
-              from pathlib import Path
-              from urllib.request import urlopen
-
-              def normalize(value):
-                  if isinstance(value, list):
-                      return [normalize(item) for item in value]
-                  if isinstance(value, dict):
-                      result = {key: normalize(item) for key, item in value.items()}
-                      if result.get("uid") == "${DS_PROMETHEUS}":
-                          result["uid"] = "Prometheus"
-                      if result.get("datasource") in ("Prometheus", "${DS_PROMETHEUS}"):
-                          result["datasource"] = {"type": "prometheus", "uid": "Prometheus"}
-                      return result
-                  return value
-
-              dashboards = {
-                  1860: "node-exporter-full.json",
-                  15760: "k8s-views-pods.json",
-                  6417: "k8s-cluster-prometheus.json",
-                  7249: "k8s-cluster.json",
-              }
-              for dashboard_id, filename in dashboards.items():
-                  url = f"https://grafana.com/api/dashboards/{dashboard_id}/revisions/latest/download"
-                  with urlopen(url, timeout=60) as response:
-                      payload = json.load(response)
-                  dashboard = normalize(payload.get("dashboard", payload))
-                  dashboard["id"] = None
-                  Path("/dashboards", filename).write_text(json.dumps(dashboard), encoding="utf-8")
-                  print(f"Provisioned {filename}", flush=True)
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 256Mi
-          volumeMounts:
-            - name: dashboards
-              mountPath: /dashboards
       containers:
         - name: grafana
-          image: grafana/grafana:11.2.0
+          image: grafana/grafana:11.2.0@sha256:408afb9726de5122b00a2576763a8a57a3c86d5b0eff5305bc994ceb3eb96c3f
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -144,7 +94,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: grafana-data
+            claimName: grafana-data-mp
         - name: datasources
           configMap:
             name: grafana-datasources
@@ -152,7 +102,8 @@ spec:
           configMap:
             name: grafana-dashboards-provider
         - name: dashboards
-          emptyDir: {}
+          configMap:
+            name: grafana-host-dashboards
         - name: temporary
           emptyDir:
             sizeLimit: 128Mi

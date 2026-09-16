@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: observability-backup
+  namespace: observability
+spec:
+  schedule: "50 10 * * *"
+  timeZone: Etc/UTC
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 2400
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: observability-backup
+        spec:
+          serviceAccountName: observability-backup
+          nodeSelector:
+            kubernetes.io/hostname: mp
+          restartPolicy: Never
+          securityContext:
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backup
+              image: python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
+              command: [python, -B, -m, recovery.backup]
+              workingDir: /code
+              securityContext:
+                runAsUser: 0
+                runAsGroup: 0
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+                  add: [DAC_READ_SEARCH]
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+                limits: {cpu: "1", memory: 512Mi, ephemeral-storage: 2Gi}
+              volumeMounts:
+                - {name: grafana, mountPath: /sources/grafana, readOnly: true}
+                - {name: prometheus, mountPath: /sources/prometheus, readOnly: true}
+                - {name: tempo, mountPath: /sources/tempo, readOnly: true}
+                - {name: backups, mountPath: /backup}
+                - {name: code, mountPath: /code/recovery, readOnly: true}
+                - {name: identity, mountPath: /identity, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: grafana, persistentVolumeClaim: {claimName: grafana-data-mp, readOnly: true}}
+            - {name: prometheus, persistentVolumeClaim: {claimName: prometheus-data-mp, readOnly: true}}
+            - {name: tempo, persistentVolumeClaim: {claimName: tempo-data-mp, readOnly: true}}
+            - {name: backups, persistentVolumeClaim: {claimName: observability-backups-nfs-v1}}
+            - {name: code, configMap: {name: observability-recovery-code, defaultMode: 0444}}
+            - {name: identity, configMap: {name: observability-backup-identity, defaultMode: 0444}}
+            - {name: tmp, emptyDir: {sizeLimit: 2Gi}}

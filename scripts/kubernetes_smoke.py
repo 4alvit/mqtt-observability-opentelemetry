@@ -1,6 +1,10 @@
 """Check hardened monitoring images using disposable local Docker services."""
+# Pinned image digests remain indivisible for review.
+# pylint: disable=line-too-long
 
+import hashlib
 import json
+import shutil
 import subprocess
 import time
 import uuid
@@ -24,6 +28,11 @@ def write_config(name: str, directory: Path) -> Path:
     """Materialize the checked-in ConfigMap, using a disconnected Kubernetes API."""
     destination = directory / name
     destination.mkdir()
+    if name == "grafana-host-dashboards":
+        for path in (ROOT / "dashboards").glob("*.json"):
+            if path.name != "provenance.json":
+                shutil.copyfile(path, destination / path.name)
+        return destination
     for filename, content in manifest(name, "ConfigMap")["data"].items():
         if name == "prometheus-config":
             config = yaml.safe_load(content)
@@ -68,23 +77,25 @@ def runtime_service(pod: dict, container: dict, mounts: dict) -> dict:
 
 def create_compose(directory: Path) -> dict:
     """Build test services from the actual Kubernetes workload settings."""
-    dashboards = directory / "dashboards"
-    dashboards.mkdir(mode=0o777)
-    dashboards.chmod(0o777)  # Disposable bind mount emulates emptyDir's writable fsGroup.
     services = {}
     for name in ("grafana", "prometheus", "tempo"):
         pod = manifest(name, "Deployment")["spec"]["template"]["spec"]
-        mounts = {"data": f"{name}-data", "dashboards": str(dashboards)}
+        mounts = {"data": f"{name}-data"}
         for volume in pod["volumes"]:
             if "configMap" in volume:
                 mounts[volume["name"]] = str(write_config(volume["configMap"]["name"], directory))
         services[name] = runtime_service(pod, pod["containers"][0], mounts)
         if name == "grafana":
-            services["bootstrap"] = runtime_service(pod, pod["initContainers"][0], mounts)
             services[name]["environment"]["GF_SECURITY_ADMIN_PASSWORD"] = uuid.uuid4().hex
-            services[name]["depends_on"] = {
-                "bootstrap": {"condition": "service_completed_successfully"}
-            }
+
+    services["probe"] = {
+        "image": "python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6",
+        "entrypoint": ["python"],
+        "read_only": True,
+        "user": "65534:65534",
+        "cap_drop": ["ALL"],
+        "security_opt": ["no-new-privileges:true"],
+    }
     return {
         "services": services,
         "volumes": {f"{name}-data": {} for name in ("grafana", "prometheus", "tempo")},
@@ -102,7 +113,7 @@ def require_readiness(command: list[str]) -> None:
     deadline = time.monotonic() + 180
     while True:
         result = subprocess.run(
-            [*command, "run", "--rm", "--no-deps", "-T", "bootstrap", "-c", probe],
+            [*command, "run", "--rm", "--no-deps", "-T", "probe", "-c", probe],
             capture_output=True,
             text=True,
             check=False,
@@ -115,7 +126,7 @@ def require_readiness(command: list[str]) -> None:
 
 
 def main() -> None:
-    """Check bootstrap output and readiness, then remove only this disposable stack."""
+    """Check frozen dashboard output and readiness, then remove only this disposable stack."""
     require_local_docker()
     with TemporaryDirectory(prefix="kubernetes-smoke-") as temporary:
         directory = Path(temporary)
@@ -126,13 +137,16 @@ def main() -> None:
         try:
             subprocess.run([*command, "up", "-d", "grafana", "prometheus", "tempo"], check=True)
             require_readiness(command)
-            dashboards = list((directory / "dashboards").glob("*.json"))
+            dashboards = list((directory / "grafana-host-dashboards").glob("*.json"))
             if len(dashboards) != 4:
-                raise SystemExit("Dashboard bootstrap did not provision all four dashboards")
+                raise SystemExit("Frozen ConfigMap did not provision all four dashboards")
+            provenance = json.loads((ROOT / "dashboards/provenance.json").read_text())
+            hashes = {item["name"]: item["sha256"] for item in provenance["files"]}
             for dashboard in dashboards:
-                content = dashboard.read_text(encoding="utf-8")
-                if json.loads(content).get("id") is not None or "${DS_PROMETHEUS}" in content:
-                    raise SystemExit("Dashboard normalization failed: " + dashboard.name)
+                if hashlib.sha256(dashboard.read_bytes()).hexdigest() != hashes[dashboard.name]:
+                    raise SystemExit("Frozen dashboard bytes differ: " + dashboard.name)
+                if not json.loads(dashboard.read_text()).get("uid"):
+                    raise SystemExit("Frozen dashboard UID is missing: " + dashboard.name)
             print("Hardened Grafana, Prometheus and Tempo are ready; all dashboards provisioned.")
         finally:
             subprocess.run([*command, "logs", "--tail", "60"], check=False)
