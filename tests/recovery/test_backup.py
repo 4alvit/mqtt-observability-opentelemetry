@@ -16,6 +16,7 @@ from recovery.backup import (
     completed_paths,
     prune,
     validate_binding,
+    validate_grafana_capture,
 )
 from recovery.migrate import stage_dashboards, target_template
 
@@ -97,6 +98,22 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(incomplete.exists())
         self.assertEqual(len(list(self.root.iterdir())), 16)
         self.assertTrue((self.root / "20260916T000016Z-00000010").exists())
+
+    def test_grafana_recurring_scope_rejects_non_online_sqlite(self):
+        validate_grafana_capture({"sqlite_databases": ["grafana.db"]})
+        for bad in (
+            {"sqlite_databases": []},
+            {
+                "sqlite_databases": ["grafana.db"],
+                "sqlite_stable_wal_copies": ["grafana.db"],
+            },
+            {
+                "sqlite_databases": ["grafana.db"],
+                "sqlite_quiescent_copies": ["grafana.db"],
+            },
+        ):
+            with self.assertRaises(ValueError):
+                validate_grafana_capture(bad)
 
     def test_large_dashboard_configmap_uses_server_side_apply(self):
         operator = Mock()

@@ -222,6 +222,14 @@ def completed_paths(service, root):
     raise ValueError("Unsupported block service")
 
 
+def validate_grafana_capture(result):
+    """Require the promised online SQLite method for the running Grafana database."""
+    if "grafana.db" not in result.get("sqlite_databases", []):
+        raise ValueError("Grafana primary SQLite database is absent from this capture")
+    if result.get("sqlite_stable_wal_copies") or result.get("sqlite_quiescent_copies"):
+        raise ValueError("Recurring Grafana backups require the online SQLite API")
+
+
 def block_archive(service, root, destination):
     """Archive only completed blocks and reject concurrent layout changes."""
     selected = completed_paths(service, root)
@@ -309,6 +317,8 @@ def main():
             if service == "grafana"
             else block_archive(service, source, destination)
         )
+        if service == "grafana":
+            validate_grafana_capture(result)
         result.update(
             name=service, source=identities[service], recovery_scope=LIMITS[service]
         )

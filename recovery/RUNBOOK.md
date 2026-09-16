@@ -120,6 +120,8 @@ Recurring recovery scope is deliberately narrower than the cold migration:
 
 - **Grafana:** online SQLite backup plus stable application files, plugins, and
   namespace configuration/Secrets. Existing cryptographic settings are retained.
+  The Job requires `grafana.db` and rejects physical/quiescent SQLite fallback
+  methods; inability to obtain an online SQLite backup fails the set.
 - **Prometheus:** only completed immutable ULID blocks with valid metadata/index/
   chunks. WAL, head chunks and transient compaction files are excluded. Overlapping
   block ranges or changes during capture fail the Job. **Roughly the newest three

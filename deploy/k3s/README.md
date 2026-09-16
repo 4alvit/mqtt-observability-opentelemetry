@@ -35,6 +35,10 @@ GitHub Actions secrets: `KUBECONFIG`, `GRAFANA_ADMIN_PASSWORD`.
 
 ## Apply / redeploy
 
+The deployment script uses server-side apply because the frozen dashboard
+ConfigMap exceeds the client-side annotation limit. Field ownership conflicts
+stop deployment and must be reviewed; the script does not force ownership.
+
 ```bash
 export KUBECONFIG=~/.kube/h7.yaml
 ./deploy/k3s/deploy.sh
