@@ -1,0 +1,11 @@
+{
+  "upstream": "https://github.com/4alvit/home-assistant-k3s",
+  "commit": "8d43e52c06a468d36ceeab065c8cef7f6ff74bf9",
+  "path": "disaster_recovery",
+  "files_sha256": {
+    "archive.py": "d1806845c7196d68dce93e8b7af04697359240bbba8d3daa49baf2c8fd0b589e",
+    "restore.py": "9fdb296fbd4337ca33a3c12f6cc930f4b413330fcd655d1c986ecbcc196701c5",
+    "prepare.py": "f6261bc1404a3f00947e087c14cbaab976b31960a330f5a8a18cccb9671cca86"
+  },
+  "changes": "Unmodified reviewed archive, verifier, and offline metadata preparation helpers."
+}

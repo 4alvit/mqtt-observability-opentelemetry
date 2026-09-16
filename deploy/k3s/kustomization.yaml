@@ -11,9 +11,20 @@ resources:
   - prometheus-pvc.yaml
   - tempo-pvc.yaml
   - grafana-pvc.yaml
+  - mp-storage.yaml
+  - local-store-pdbs.yaml
   - prometheus.yaml
   - tempo.yaml
   - grafana.yaml
   - node-exporter.yaml
   - kube-state-metrics.yaml
   - ingress.yaml
+configMapGenerator:
+  - name: grafana-host-dashboards
+    files:
+      - dashboards/node-exporter-full.json
+      - dashboards/k8s-views-pods.json
+      - dashboards/k8s-cluster-prometheus.json
+      - dashboards/k8s-cluster.json
+generatorOptions:
+  disableNameSuffixHash: true

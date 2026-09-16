@@ -52,27 +52,29 @@ kubectl -n observability port-forward svc/tempo 3200:3200
 
 ## PVCs
 
-`prometheus-data`, `tempo-data`, `grafana-data` — 5Gi each, `local-path`.
+Active stores use `prometheus-data-mp`, `tempo-data-mp`, and `grafana-data-mp`: 5Gi
+static local volumes on mp with Retain. The original h7 claims remain declared
+for rollback. Follow [the migration and recovery runbook](../../recovery/RUNBOOK.md);
+applying this base is not the live migration procedure.
 
 ## Grafana dashboards
 
-`fetch-dashboards` initContainer downloads from grafana.com into an emptyDir, then Grafana file-provisions them:
+The `grafana-host-dashboards` ConfigMap contains the exact four JSON files captured from the running installation on 2026-09-16:
 
 - Node Exporter Full (1860)
 - Kubernetes / Views / Pods (15760)
 - Kubernetes Cluster (Prometheus) (6417)
 - Kubernetes Cluster (7249)
 
-Datasource: provisioned `Prometheus`. Re-fetched on every pod start (survives PVC wipe).
+Datasource: provisioned `Prometheus`. Files and UIDs remain stable across pod starts; provenance and SHA-256 are in `dashboards/provenance.json`.
 
 ## Runtime security
 
 Grafana, Prometheus and Tempo retain their upstream image UIDs (472, 65534 and
 10001 respectively). They use read-only root filesystems, dropped capabilities,
 no privilege escalation and RuntimeDefault seccomp. Application data remains on
-the existing PVC paths; `/tmp` uses bounded emptyDir volumes. Grafana dashboard
-bootstrap uses the pinned Python image's standard library and the shared fsGroup,
-so pod startup no longer installs packages as root.
+the existing mount paths; `/tmp` uses bounded emptyDir volumes. Grafana reads
+frozen provisioned dashboards from a ConfigMap without network downloads.
 
 Prometheus keeps pod/endpoint discovery permissions; its configuration has no
 kubelet scrape, so node-proxy and node-metrics permissions are removed.
@@ -104,7 +106,7 @@ not authorize write access, extra capabilities or additional host mounts.
 
 `python scripts/kubernetes_smoke.py` (with the locked MQTT-interceptor environment)
 checks the actual image identities, read-only roots, writable data volumes,
-dashboard bootstrap and readiness in a disposable local Docker stack. Its
+frozen dashboard files and readiness in a disposable local Docker stack. Its
 Kubernetes discovery endpoint is deliberately disconnected. It does not validate
 live cluster RBAC, existing PVC permissions or node firewall policy, and does not
 deploy these manifests.

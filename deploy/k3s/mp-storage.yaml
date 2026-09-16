@@ -1,0 +1,130 @@
+# Populate these NEW local paths with the guarded migration tool before starting applications.
+# Existing h7 claims stay declared separately for rollback; do not delete them.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: observability-grafana-mp
+  labels:
+    app.kubernetes.io/part-of: observability
+    recovery.ha-homelab.io/storage: mp-local
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ''
+  claimRef:
+    namespace: observability
+    name: grafana-data-mp
+  local:
+    path: /var/lib/observability/grafana
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - mp
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data-mp
+  namespace: observability
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ''
+  volumeName: observability-grafana-mp
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: observability-tempo-mp
+  labels:
+    app.kubernetes.io/part-of: observability
+    recovery.ha-homelab.io/storage: mp-local
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ''
+  claimRef:
+    namespace: observability
+    name: tempo-data-mp
+  local:
+    path: /var/lib/observability/tempo
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - mp
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data-mp
+  namespace: observability
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ''
+  volumeName: observability-tempo-mp
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: observability-prometheus-mp
+  labels:
+    app.kubernetes.io/part-of: observability
+    recovery.ha-homelab.io/storage: mp-local
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ''
+  claimRef:
+    namespace: observability
+    name: prometheus-data-mp
+  local:
+    path: /var/lib/observability/prometheus
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - mp
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data-mp
+  namespace: observability
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ''
+  volumeName: observability-prometheus-mp
+  resources:
+    requests:
+      storage: 5Gi

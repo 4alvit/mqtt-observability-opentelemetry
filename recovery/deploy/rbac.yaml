@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observability-backup
+  namespace: observability
+---
+# Read-only private recovery export. Secrets never appear in Job output.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: observability-backup
+  namespace: observability
+rules:
+  - apiGroups: [""]
+    resources: [pods, configmaps, secrets, services, persistentvolumeclaims, serviceaccounts]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: observability-backup
+  namespace: observability
+subjects:
+  - {kind: ServiceAccount, name: observability-backup, namespace: observability}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: observability-backup}
+# Installer generates a ClusterRole limited to get on the four validated PV names.

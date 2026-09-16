@@ -1,0 +1,31 @@
+{
+  "source": "Existing provisioned files captured from Grafana11.2.0 before migration",
+  "captured_date": "2026-09-16",
+  "purpose": "Freeze existing dashboard definitions; do not fetch latest revisions during node migration",
+  "files": [
+    {
+      "name": "k8s-views-pods.json",
+      "uid": "k8s_views_pods",
+      "bytes": 79552,
+      "sha256": "e70024ef3eb5c1f482a4ff035406f59e358dc73b790592537f8672c03215e564"
+    },
+    {
+      "name": "node-exporter-full.json",
+      "uid": "rYdddlPWk",
+      "bytes": 468601,
+      "sha256": "2cac47648c06c4fd2c6becabda8f4a774e289b7004ade7855245fbf46bd9f527"
+    },
+    {
+      "name": "k8s-cluster.json",
+      "uid": "os6Bh8Omk",
+      "bytes": 31325,
+      "sha256": "9cf4fee7c7a85acdd6da1fea16bea4bb922e5b268267b31f30b6f03c36f059ce"
+    },
+    {
+      "name": "k8s-cluster-prometheus.json",
+      "uid": "4XuMd2Iiz",
+      "bytes": 59241,
+      "sha256": "8e8e7d4646166b7fbfdbe18fd3b81b621b2a78d0b133508f20d8027d9c02b8bd"
+    }
+  ]
+}

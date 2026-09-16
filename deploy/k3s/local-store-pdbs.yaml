@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana-local-store
+  namespace: observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tempo-local-store
+  namespace: observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: tempo
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prometheus-local-store
+  namespace: observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: prometheus
