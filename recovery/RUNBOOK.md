@@ -67,7 +67,8 @@ new static storage and start the captured template on mp.
 
 Grafana's four provisioned dashboard JSON files are frozen from the live pod in
 `deploy/k3s/dashboards`, preserving UIDs and titles. Startup no longer downloads
-new revisions. Acceptance checks authenticated dashboard/datasource/user identity,
+new revisions. The frozen ConfigMap is staged with server-side apply before any
+source stop, avoiding Kubernetes' 256 KiB client-side annotation limit. Acceptance checks authenticated dashboard/datasource/user identity,
 zero alert rules, unchanged credentials and effective ini/default hashes.
 Prometheus acceptance compares the **same pre-migration historical timestamp**
 for `up`; Tempo checks readiness and unchanged configuration. Cold-archive

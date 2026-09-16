@@ -472,6 +472,34 @@ print(json.dumps({'verified': True, 'installed': bool(SERVICE), 'component_count
     return result
 
 
+def stage_dashboards(operator):
+    """Stage frozen files before outage without client-side annotation expansion."""
+    files = (ROOT / "deploy/k3s/dashboards").glob("*.json")
+    data = {
+        p.name: p.read_text(encoding="utf-8")
+        for p in files
+        if p.name != "provenance.json"
+    }
+    require(len(data) == 4, "Exactly four frozen dashboards are required")
+    value = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": "grafana-host-dashboards", "namespace": NAMESPACE},
+        "data": data,
+    }
+    operator.run(
+        operator.kube
+        + [
+            "apply",
+            "--server-side",
+            "--field-manager=observability-migration",
+            "-f",
+            "-",
+        ],
+        json.dumps(value).encode(),
+    )
+
+
 def migrate(service, evidence, nas_root, context):
     """Move one stopped store after source, backup and destination gates."""
     os.umask(0o077)
@@ -533,6 +561,8 @@ def migrate(service, evidence, nas_root, context):
             not existing.strip(),
             "Destination PV/PVC already exists; refusing to adopt or overwrite it",
         )
+    if service == "grafana":
+        stage_dashboards(operator)
     preflight = """
 import os, sys
 from pathlib import Path
@@ -850,21 +880,6 @@ print('ok')
             == target_claim["metadata"]["uid"],
             "Target PVC binding is not proven",
         )
-        if service == "grafana":
-            files = (ROOT / "deploy/k3s/dashboards").glob("*.json")
-            data = {p.name: p.read_text() for p in files if p.name != "provenance.json"}
-            require(len(data) == 4, "Exactly four frozen dashboards are required")
-            operator.apply(
-                {
-                    "apiVersion": "v1",
-                    "kind": "ConfigMap",
-                    "metadata": {
-                        "name": "grafana-host-dashboards",
-                        "namespace": NAMESPACE,
-                    },
-                    "data": data,
-                }
-            )
         target_start_attempted = (
             True  # New data may exist even if the API response is lost.
         )

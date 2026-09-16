@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from unittest.mock import Mock
 
 from recovery.backup import (
     OWNER,
@@ -16,7 +17,7 @@ from recovery.backup import (
     prune,
     validate_binding,
 )
-from recovery.migrate import target_template
+from recovery.migrate import stage_dashboards, target_template
 
 
 class BackupTests(unittest.TestCase):
@@ -96,6 +97,17 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(incomplete.exists())
         self.assertEqual(len(list(self.root.iterdir())), 16)
         self.assertTrue((self.root / "20260916T000016Z-00000010").exists())
+
+    def test_large_dashboard_configmap_uses_server_side_apply(self):
+        operator = Mock()
+        operator.kube = ["kubectl", "--context", "fixture"]
+        stage_dashboards(operator)
+        args, content = operator.run.call_args.args
+        self.assertIn("--server-side", args)
+        self.assertGreater(len(content), 262144)
+        document = json.loads(content)
+        self.assertEqual(len(document["data"]), 4)
+        self.assertNotIn("annotations", document["metadata"])
 
     def test_reviewed_helper_bytes_match_provenance(self):
 
