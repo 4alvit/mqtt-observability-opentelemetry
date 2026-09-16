@@ -71,7 +71,11 @@ new revisions. The frozen ConfigMap is staged with server-side apply before any
 source stop, avoiding Kubernetes' 256 KiB client-side annotation limit. Acceptance checks authenticated dashboard/datasource/user identity,
 zero alert rules, unchanged credentials and effective ini/default hashes.
 Prometheus acceptance compares the **same pre-migration historical timestamp**
-for `up`; Tempo checks readiness and unchanged configuration. Cold-archive
+for `up` and captures the current effective scrape targets. Comparison rejects
+missing/duplicate targets or changed endpoints and requires every previously UP
+target to remain UP. Check target access from mp before accepting the move; old
+history-only receipts are insufficient for this check and need separate fresh
+live-target evidence. Tempo checks readiness and unchanged configuration. Cold-archive
 verification protects its local history, but no synthetic trace is injected.
 
 ### Failure and rollback
