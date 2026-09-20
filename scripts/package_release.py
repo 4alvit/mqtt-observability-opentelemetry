@@ -193,8 +193,8 @@ def build_candidate(
                     raise ValueError(f"OCI asset has no promotion target: {asset}")
                 context = (source / image["context"]).resolve()
                 dockerfile = (source / image["dockerfile"]).resolve()
-                context.relative_to(source)
-                dockerfile.relative_to(source)
+                context.relative_to(source.resolve())
+                dockerfile.relative_to(source.resolve())
                 subprocess.run(
                     [
                         "docker",
