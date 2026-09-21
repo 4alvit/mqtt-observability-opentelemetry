@@ -35,6 +35,7 @@ class HostMonitoringPolicyTests(unittest.TestCase):
                 "Unconfined",
             ),
             ("service account token", (*pod_path, "automountServiceAccountToken"), True),
+            ("host DNS fallback", (*pod_path, "dnsPolicy"), "ClusterFirst"),
             ("new host namespace", (*pod_path, "hostIPC"), True),
             ("image replacement", (*container_path, "image"), "prom/node-exporter:latest"),
             ("privileged", (*container_path, "securityContext", "privileged"), True),
