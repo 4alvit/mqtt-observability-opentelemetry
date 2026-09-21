@@ -17,6 +17,8 @@ spec:
         app: node-exporter
     spec:
       hostNetwork: true
+      # Host networking otherwise falls back to the node's resolver list.
+      dnsPolicy: ClusterFirstWithHostNet
       hostPID: true
       automountServiceAccountToken: false
       securityContext:
