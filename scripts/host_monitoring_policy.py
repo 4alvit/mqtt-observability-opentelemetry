@@ -8,9 +8,10 @@ import yaml
 
 MANIFEST_PATH = "deploy/k3s/node-exporter.yaml"
 APPROVED_RULES = {"AVD-KSV-0009", "AVD-KSV-0010", "AVD-KSV-0024", "AVD-KSV-0121"}
-# Canonical JSON for the two reviewed documents at 2b9ea23403d01b917c19fb9b2b52e34e661b0ee2.
+# Canonical JSON for the two reviewed documents, including ClusterFirstWithHostNet.
+# The DNS-only update preserves the four existing host-monitoring exceptions.
 # Also locks arguments, resources, selectors, annotations, port, Service and unknown fields.
-APPROVED_MANIFEST_SHA256 = "c9f41676f86985fffc279db0ab56b0b2857b9302ed9d1d915ec27043efa68c73"
+APPROVED_MANIFEST_SHA256 = "8911f272cee24614bb9333f3f1522eb8bf818657db9e8379368e20216833bc85"
 
 
 def require(condition: bool, message: str) -> None:
