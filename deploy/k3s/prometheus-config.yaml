@@ -15,6 +15,20 @@ data:
       - job_name: prometheus
         static_configs:
           - targets: ['localhost:9090']
+      - job_name: venus-os-observability
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        static_configs:
+          - targets: ['192.168.160.150:9090']
+            labels:
+              site: venus
+      - job_name: inverter-control
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        static_configs:
+          - targets: ['192.168.160.150:9102']
+            labels:
+              site: venus
       - job_name: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
