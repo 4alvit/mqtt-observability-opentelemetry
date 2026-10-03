@@ -45,9 +45,7 @@ def validate(result, repository: str, commit: str) -> None:
     if result.get("repo") != {"name": f"github.com/{repository}", "commit": commit}:
         raise ValueError("Scorecard analyzed a different repository or commit")
     if result.get("scorecard") != VERSION:
-        raise ValueError(
-            "Scorecard version changed; revalidate the completeness contract"
-        )
+        raise ValueError("Scorecard version changed; revalidate the completeness contract")
     checks = result.get("checks")
     if not isinstance(checks, list):
         raise TypeError("Scorecard checks are missing")
@@ -62,7 +60,9 @@ def validate(result, repository: str, commit: str) -> None:
         score = check.get("score")
         # In pinned v5.5.0 every runtime-error constructor sets score=-1;
         # JSON2 retains that score even though it omits CheckResult.Error.
-        if name not in DISABLED and (type(score) is not int or not 0 <= score <= 10):
+        if name not in DISABLED and (
+            not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 10
+        ):
             raise ValueError(f"Incomplete Scorecard check: {name}")
     if seen != CHECKS:
         raise ValueError("Scorecard did not run every expected check")
