@@ -21,7 +21,7 @@ The Mosquitto Exporter connects to a Mosquitto MQTT broker, subscribes to `$SYS/
 | Metric | Type | Description |
 |--------|------|-------------|
 | `mosquitto_clients_connected` | Gauge | Currently connected clients |
-| `mosquitto_clients_disconnected_total` | Counter | Total disconnected clients |
+| `mosquitto_clients_disconnected` | Gauge | Currently disconnected persistent clients |
 | `mosquitto_clients_expired_total` | Counter | Expired sessions |
 | `mosquitto_clients_maximum` | Gauge | Maximum concurrent clients |
 
@@ -76,8 +76,8 @@ The Mosquitto Exporter connects to a Mosquitto MQTT broker, subscribes to `$SYS/
 ### Environment Variables
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MQTT_HOST` | `mosquitto` | Broker hostname |
-| `MQTT_PORT` | `1883` | Broker port |
+| `MQTT_UPSTREAM_HOST` | `mosquitto` | Broker hostname |
+| `MQTT_UPSTREAM_PORT` | `1883` | Broker port |
 | `MQTT_USERNAME` | - | Username (optional) |
 | `MQTT_PASSWORD` | - | Password (optional) |
 | `MQTT_CLIENT_ID` | `mosquitto-exporter` | MQTT client ID |
@@ -98,11 +98,11 @@ The Mosquitto Exporter connects to a Mosquitto MQTT broker, subscribes to `$SYS/
 ### OpenTelemetry
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otelcol:4317` | OTLP endpoint |
+| `OTEL_ENDPOINT` | `http://otelcol:4317` | OTLP endpoint |
 | `OTEL_SERVICE_NAME` | `mosquitto-exporter` | Service name |
-| `OTEL_EXPORTER_OTLP_INSECURE` | `true` | Use insecure connection |
-| `OTEL_EXPORTER_OTLP_TIMEOUT` | `10` | Export timeout (seconds) |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `30000` | Export interval (ms) |
+| `OTEL_INSECURE` | `true` | Use insecure connection |
+| `OTEL_TIMEOUT` | `10` | Export timeout (seconds) |
+| `OTEL_EXPORT_INTERVAL` | `30` | Export interval (seconds) |
 
 ### Metrics Collection
 | Variable | Default | Description |
@@ -124,11 +124,11 @@ services:
     ports:
       - "9494:9494"
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=1883
+      - MQTT_UPSTREAM_HOST=mosquitto
+      - MQTT_UPSTREAM_PORT=1883
       - PROMETHEUS_ENABLED=true
       - PROMETHEUS_PORT=9494
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4317
+      - OTEL_ENDPOINT=http://otelcol:4317
       - OTEL_SERVICE_NAME=mosquitto-exporter
     depends_on:
       mosquitto:
@@ -162,9 +162,9 @@ spec:
         ports:
         - containerPort: 9494
         env:
-        - name: MQTT_HOST
+        - name: MQTT_UPSTREAM_HOST
           value: "mosquitto"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        - name: OTEL_ENDPOINT
           value: "http://otelcol:4317"
 ---
 apiVersion: v1
@@ -257,3 +257,19 @@ sys_topic_enabled true
 persistence true
 persistence_location /mosquitto/data/
 ```
+## Broker statistics semantics
+
+Use `MQTT_UPSTREAM_HOST` / `MQTT_UPSTREAM_PORT` to select the broker and
+`MQTT_VERSION=3` for MQTT 3.1.1 or `5` for MQTT 5. The version is applied to
+Paho's actual connection; the TLS options are applied before connecting.
+`OTEL_ENDPOINT` is the collector URL read by this component's configuration.
+
+The broker publishes absolute lifetime totals, not increments. Observable
+counters export each latest total once per collection, including a decrease
+when the broker restarts. Repeated retained values do not inflate traffic.
+`mosquitto_clients_disconnected` is a gauge of currently disconnected persistent
+sessions. Uptime accepts Mosquitto's `<integer> seconds` payload. After
+`METRICS_STALE_THRESHOLD` seconds without a valid broker message, cached samples
+are omitted rather than reported indefinitely as current readings.
+
+See the [Mosquitto broker statistics reference](https://mosquitto.org/man/mosquitto-8.html).

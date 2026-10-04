@@ -311,3 +311,34 @@ def sample_interceptor():
     """Fixture providing a configured interceptor for testing."""
     config = Config()
     return MQTTInterceptor(config)
+
+
+def test_mqtt311_message_without_trace_properties_survives(sample_interceptor):
+    """Paho MQTT3 messages have no MQTT5 trace properties."""
+    from paho.mqtt.client import MQTTMessage
+
+    message = MQTTMessage(topic=b"devices/sensor/telemetry")
+    message.payload = b"private-payload"
+    assert message.properties is None
+    sample_interceptor._handle_publish(message)
+
+
+def test_received_trace_is_parent_of_observer_span():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import SpanContext, TraceFlags, TraceState
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    processor = TopicSpanProcessor(provider.get_tracer("test"), ["devices/+/telemetry"], 1.0)
+    parent = SpanContext(0x1234, 0x5678, True, TraceFlags(1), TraceState())
+    try:
+        span = processor.create_span("devices/sensor/telemetry", "subscribe", parent=parent)
+        span.end()
+        result = exporter.get_finished_spans()[0]
+        assert result.context.trace_id == parent.trace_id
+        assert result.parent.span_id == parent.span_id
+    finally:
+        provider.shutdown()

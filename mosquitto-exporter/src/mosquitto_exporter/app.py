@@ -2,7 +2,9 @@
 
 import asyncio
 import builtins
+import math
 import signal
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +14,7 @@ import structlog
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -134,7 +137,7 @@ SYS_METRICS = [
     SYSMetric(
         "$SYS/broker/clients/disconnected",
         "mosquitto_clients_disconnected",
-        "counter",
+        "gauge",
         "Disconnected clients",
         int,
     ),
@@ -247,6 +250,9 @@ class SYSMetricsCollector:
         self.metrics_data: dict[str, Any] = {}
         self.last_update: float = 0
         self.otel_metrics: dict[str, Any] = {}
+        self._values: dict[str, int | float] = {}
+        self._values_lock = threading.Lock()
+        self._stop_event = asyncio.Event()
         self._setup_otel()
 
     def _setup_otel(self) -> None:
@@ -285,18 +291,28 @@ class SYSMetricsCollector:
     def _create_otel_metrics(self) -> None:
         self.otel_metrics = {}
         for sys_metric in SYS_METRICS:
-            if sys_metric.type == "counter":
-                self.otel_metrics[sys_metric.name] = self.meter.create_counter(
-                    sys_metric.name,
-                    description=sys_metric.description,
-                    unit=sys_metric.name.split("_")[-1] if "_" in sys_metric.name else "1",
-                )
-            else:
-                self.otel_metrics[sys_metric.name] = self.meter.create_gauge(
-                    sys_metric.name,
-                    description=sys_metric.description,
-                    unit=sys_metric.name.split("_")[-1] if "_" in sys_metric.name else "1",
-                )
+            if sys_metric.value_type is str:
+                continue
+
+            def observe(
+                _options: CallbackOptions, name: str = sys_metric.name
+            ) -> list[Observation]:
+                with self._values_lock:
+                    if time.monotonic() - self.last_update > self.config.metrics.stale_threshold:
+                        return []
+                    value = self._values.get(name)
+                    return [] if value is None else [Observation(value)]
+
+            # $SYS publishes absolute broker totals. Observable instruments report
+            # the current snapshot, including a reset, without adding it twice.
+            create = (
+                self.meter.create_observable_counter
+                if sys_metric.type == "counter"
+                else self.meter.create_observable_gauge
+            )
+            self.otel_metrics[sys_metric.name] = create(
+                sys_metric.name, callbacks=[observe], description=sys_metric.description
+            )
 
     def _on_connect(
         self,
@@ -323,10 +339,16 @@ class SYSMetricsCollector:
         for sys_metric in SYS_METRICS:
             if topic == sys_metric.topic:
                 try:
+                    if sys_metric.topic == "$SYS/broker/uptime":
+                        value = value.removesuffix(" seconds")
                     parsed = sys_metric.value_type(value)
+                    if isinstance(parsed, (int, float)) and (
+                        not math.isfinite(parsed) or parsed < 0
+                    ):
+                        raise ValueError("Expected a finite nonnegative broker statistic")
                     self.metrics_data[sys_metric.name] = parsed
                     self._record_metric(sys_metric.name, parsed, sys_metric.type)
-                    self.last_update = time.time()
+                    self.last_update = time.monotonic()
                 except ValueError:
                     logger.warning(
                         "Failed to parse value",
@@ -340,24 +362,28 @@ class SYSMetricsCollector:
         # Broker version is text metadata, not a numeric gauge sample.
         if not isinstance(value, (int, float)):
             return
-        metric = self.otel_metrics.get(name)
-        if metric and metric_type == "counter":
-            metric.add(value)
-        elif metric and metric_type == "gauge":
-            metric.set(value)
+        with self._values_lock:
+            self._values[name] = value
 
     async def start(self) -> None:
         """Connect to the broker and run periodic metric exports until cancelled."""
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=self.config.mqtt.client_id,
-            protocol=mqtt.MQTTv5,
+            protocol=mqtt.MQTTv5 if self.config.mqtt.version == 5 else mqtt.MQTTv311,
         )
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
 
         if self.config.mqtt.username:
             self.client.username_pw_set(self.config.mqtt.username, self.config.mqtt.password)
+
+        if self.config.mqtt.tls_enabled:
+            self.client.tls_set(
+                ca_certs=self.config.mqtt.tls_ca_cert,
+                certfile=self.config.mqtt.tls_certfile,
+                keyfile=self.config.mqtt.tls_keyfile,
+            )
 
         logger.info(
             "Connecting to Mosquitto",
@@ -376,9 +402,14 @@ class SYSMetricsCollector:
             logger.info("Prometheus metrics server started", port=self.config.prometheus.port)
 
         try:
-            while True:
-                await asyncio.sleep(self.config.metrics.scrape_interval)
-                if time.time() - self.last_update > self.config.metrics.stale_threshold:
+            while not self._stop_event.is_set():
+                try:
+                    await asyncio.wait_for(
+                        self._stop_event.wait(), timeout=self.config.metrics.scrape_interval
+                    )
+                except TimeoutError:
+                    pass
+                if time.monotonic() - self.last_update > self.config.metrics.stale_threshold:
                     logger.warning("No metrics received recently", last_update=self.last_update)
         except asyncio.CancelledError:
             logger.info("Collector stopped")
@@ -387,9 +418,11 @@ class SYSMetricsCollector:
 
     def stop(self) -> None:
         """Stop the MQTT network loop and disconnect the collector."""
+        self._stop_event.set()
         if self.client:
-            self.client.loop_stop()
             self.client.disconnect()
+            self.client.loop_stop()
+            self.client = None
 
 
 async def main() -> None:
