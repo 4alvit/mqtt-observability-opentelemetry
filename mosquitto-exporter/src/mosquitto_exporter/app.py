@@ -251,6 +251,7 @@ class SYSMetricsCollector:
         self.last_update: float = 0
         self.otel_metrics: dict[str, Any] = {}
         self._values: dict[str, int | float] = {}
+        self._counter_epochs: dict[str, int] = {}
         self._values_lock = threading.Lock()
         self._stop_event = asyncio.Event()
         self._setup_otel()
@@ -295,16 +296,24 @@ class SYSMetricsCollector:
                 continue
 
             def observe(
-                _options: CallbackOptions, name: str = sys_metric.name
+                _options: CallbackOptions,
+                name: str = sys_metric.name,
+                is_counter: bool = sys_metric.type == "counter",
             ) -> list[Observation]:
                 with self._values_lock:
                     if time.monotonic() - self.last_update > self.config.metrics.stale_threshold:
                         return []
                     value = self._values.get(name)
-                    return [] if value is None else [Observation(value)]
+                    if value is None:
+                        return []
+                    attributes = (
+                        {"counter_epoch": self._counter_epochs.get(name, 0)} if is_counter else None
+                    )
+                    return [Observation(value, attributes)]
 
             # $SYS publishes absolute broker totals. Observable instruments report
-            # the current snapshot, including a reset, without adding it twice.
+            # the current snapshot without adding it twice. A broker reset gets
+            # a new stream identity so delta readers never compute a negative sum.
             create = (
                 self.meter.create_observable_counter
                 if sys_metric.type == "counter"
@@ -363,6 +372,9 @@ class SYSMetricsCollector:
         if not isinstance(value, (int, float)):
             return
         with self._values_lock:
+            previous = self._values.get(name)
+            if metric_type == "counter" and previous is not None and value < previous:
+                self._counter_epochs[name] = self._counter_epochs.get(name, 0) + 1
             self._values[name] = value
 
     async def start(self) -> None:

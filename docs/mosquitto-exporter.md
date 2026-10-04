@@ -266,10 +266,15 @@ Paho's actual connection; the TLS options are applied before connecting.
 
 The broker publishes absolute lifetime totals, not increments. Observable
 counters export each latest total once per collection, including a decrease
-when the broker restarts. Repeated retained values do not inflate traffic.
+when the broker restarts. On a decrease, a new `counter_epoch` attribute identifies
+a fresh metric stream so OTLP delta readers never compute negative increments.
+Repeated retained values do not inflate traffic.
 `mosquitto_clients_disconnected` is a gauge of currently disconnected persistent
 sessions. Uptime accepts Mosquitto's `<integer> seconds` payload. After
 `METRICS_STALE_THRESHOLD` seconds without a valid broker message, cached samples
-are omitted rather than reported indefinitely as current readings.
+are omitted rather than reported indefinitely as current readings. Freshness is
+broker-wide for Mosquitto: unchanged statistics are not necessarily republished,
+so an unchanged counter remains valid while broker heartbeat messages arrive.
+This does not establish an independent delivery timestamp for every topic.
 
 See the [Mosquitto broker statistics reference](https://mosquitto.org/man/mosquitto-8.html).
