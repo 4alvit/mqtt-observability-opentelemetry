@@ -342,3 +342,42 @@ def test_received_trace_is_parent_of_observer_span():
         assert result.parent.span_id == parent.span_id
     finally:
         provider.shutdown()
+
+
+@pytest.mark.parametrize(
+    "pattern,topic,matched",
+    [
+        (
+            "$SYS/broker/load/messages/received/total",
+            "$SYS/broker/load/messages/received/total",
+            True,
+        ),
+        ("#", "$SYS/broker/clients/total", False),
+        ("a/#", "a", True),
+        ("a/+/b", "a//b", True),
+        ("devices/a.b", "devices/axb", False),
+        ("devices/a[1]", "devices/a[1]", True),
+    ],
+)
+def test_mqtt_topic_matching_uses_protocol_grammar(pattern, topic, matched):
+    processor = TopicSpanProcessor(trace.get_tracer(__name__), [pattern], 1.0)
+    assert processor.matches(topic) == (matched, pattern if matched else None)
+
+
+def test_real_sys_heartbeat_creates_a_consumer_span():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    topic = "$SYS/broker/load/messages/received/total"
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    processor = TopicSpanProcessor(provider.get_tracer("test"), [topic], 1.0)
+    try:
+        span = processor.create_span(topic, "subscribe")
+        assert span is not None
+        span.end()
+        assert exporter.get_finished_spans()[0].attributes["mqtt.topic"] == topic
+    finally:
+        provider.shutdown()

@@ -137,20 +137,11 @@ class TopicSpanProcessor:
         self.tracer = tracer
         self.topic_patterns = topic_patterns
         self.sample_rate = sample_rate
-        self._compile_patterns()
-
-    def _compile_patterns(self) -> None:
-        import re
-
-        self.compiled_patterns = []
-        for pattern in self.topic_patterns:
-            regex = pattern.replace("+", "[^/]+").replace("#", ".*")
-            self.compiled_patterns.append(re.compile(f"^{regex}$"))
 
     def matches(self, topic: str) -> tuple[bool, str | None]:
-        for i, pattern in enumerate(self.compiled_patterns):
-            if pattern.match(topic):
-                return True, self.topic_patterns[i]
+        for pattern in self.topic_patterns:
+            if mqtt.topic_matches_sub(pattern, topic):
+                return True, pattern
         return False, None
 
     def extract_attributes(self, topic: str, pattern: str) -> dict[str, str]:
