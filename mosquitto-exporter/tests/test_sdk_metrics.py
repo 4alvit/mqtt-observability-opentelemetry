@@ -35,3 +35,113 @@ def test_collector_initializes_and_exports_named_gauge_values(monkeypatch):
         assert collector.metrics_data["mosquitto_version"] == "2.0.18"
     finally:
         provider.shutdown()
+
+
+def test_absolute_totals_repeat_reset_uptime_and_disconnected_gauge(monkeypatch):
+    """Repeated retained totals must not inflate counters; broker restarts reset them."""
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(app.metrics, "set_meter_provider", lambda _: None)
+    monkeypatch.setattr(app.metrics, "get_meter", provider.get_meter)
+    config = Config(otel=OTelConfig(endpoint=""), prometheus=PrometheusConfig(enabled=False))
+    collector = SYSMetricsCollector(config)
+
+    def sample(name):
+        data = reader.get_metrics_data()
+        if data is None:
+            return []
+        return [
+            p.value
+            for r in data.resource_metrics
+            for s in r.scope_metrics
+            for m in s.metrics
+            if m.name == name
+            for p in m.data.data_points
+        ]
+
+    try:
+        for value in (100, 100, 110, 4):
+            collector._parse_and_store("$SYS/broker/messages/received", str(value))
+            assert sample("mosquitto_messages_received_total") == [value]
+        collector._parse_and_store("$SYS/broker/uptime", "42 seconds")
+        assert sample("mosquitto_uptime_seconds") == [42]
+        collector._parse_and_store("$SYS/broker/clients/disconnected", "5")
+        collector._parse_and_store("$SYS/broker/clients/disconnected", "2")
+        assert sample("mosquitto_clients_disconnected") == [2]
+        data = reader.get_metrics_data()
+        metric = next(
+            m
+            for r in data.resource_metrics
+            for s in r.scope_metrics
+            for m in s.metrics
+            if m.name == "mosquitto_clients_disconnected"
+        )
+        assert type(metric.data).__name__ == "Gauge"
+        collector._parse_and_store("$SYS/broker/load/bytes/received/1min", "nan")
+        assert "mosquitto_bytes_received_1min" not in collector.metrics_data
+        monkeypatch.setattr(app.time, "monotonic", lambda: collector.last_update + 121)
+        assert sample("mosquitto_messages_received_total") == []
+    finally:
+        provider.shutdown()
+
+
+def test_counter_reset_uses_new_stream_for_delta_reader(monkeypatch):
+    from opentelemetry.sdk.metrics import ObservableCounter
+    from opentelemetry.sdk.metrics.export import AggregationTemporality
+
+    reader = InMemoryMetricReader(
+        preferred_temporality={ObservableCounter: AggregationTemporality.DELTA}
+    )
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(app.metrics, "set_meter_provider", lambda _: None)
+    monkeypatch.setattr(app.metrics, "get_meter", provider.get_meter)
+    collector = SYSMetricsCollector(
+        Config(otel=OTelConfig(endpoint=""), prometheus=PrometheusConfig(enabled=False))
+    )
+    try:
+        collected = []
+        for value in (100, 110, 4, 9):
+            collector._parse_and_store("$SYS/broker/messages/received", str(value))
+            data = reader.get_metrics_data()
+            point = next(
+                p
+                for r in data.resource_metrics
+                for s in r.scope_metrics
+                for m in s.metrics
+                if m.name == "mosquitto_messages_received_total"
+                for p in m.data.data_points
+            )
+            collected.append(point)
+        assert [p.value for p in collected] == [100, 10, 4, 5]
+        assert [p.attributes["counter_epoch"] for p in collected] == [0, 0, 1, 1]
+        assert collected[2].start_time_unix_nano > collected[0].start_time_unix_nano
+    finally:
+        provider.shutdown()
+
+
+def test_unchanged_mosquitto_counter_remains_while_heartbeat_arrives(monkeypatch):
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(app.metrics, "set_meter_provider", lambda _: None)
+    monkeypatch.setattr(app.metrics, "get_meter", provider.get_meter)
+    clock = [1000.0]
+    monkeypatch.setattr(app.time, "monotonic", lambda: clock[0])
+    collector = SYSMetricsCollector(
+        Config(otel=OTelConfig(endpoint=""), prometheus=PrometheusConfig(enabled=False))
+    )
+    try:
+        collector._parse_and_store("$SYS/broker/messages/received", "100")
+        clock[0] += 121
+        collector._parse_and_store("$SYS/broker/uptime", "3600 seconds")
+        data = reader.get_metrics_data()
+        points = [
+            p
+            for r in data.resource_metrics
+            for s in r.scope_metrics
+            for m in s.metrics
+            if m.name == "mosquitto_messages_received_total"
+            for p in m.data.data_points
+        ]
+        assert [p.value for p in points] == [100]
+    finally:
+        provider.shutdown()

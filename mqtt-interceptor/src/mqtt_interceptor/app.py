@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import signal
+import time
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -11,13 +12,17 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.trace import SpanKind, TraceFlags, TraceState
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from mqtt_interceptor.config import Config, load_config
 
 logger = structlog.get_logger()
 
 # Metrics
+last_message_timestamp = Gauge(
+    "mqtt_interceptor_last_message_timestamp_seconds",
+    "Unix timestamp of the latest message received on the configured topics",
+)
 messages_intercepted = Counter(
     "mqtt_interceptor_messages_intercepted_total",
     "Total messages intercepted",
@@ -90,7 +95,7 @@ class TraceContextPropagator:
 
             version, trace_id, parent_id, flags = parts
             trace_flags = TraceFlags(int(flags, 16))
-            trace_state = TraceState.from_header(tracestate) if tracestate else TraceState()
+            trace_state = TraceState.from_header([tracestate]) if tracestate else TraceState()
 
             span_context = trace.SpanContext(
                 trace_id=int(trace_id, 16),
@@ -132,20 +137,11 @@ class TopicSpanProcessor:
         self.tracer = tracer
         self.topic_patterns = topic_patterns
         self.sample_rate = sample_rate
-        self._compile_patterns()
-
-    def _compile_patterns(self) -> None:
-        import re
-
-        self.compiled_patterns = []
-        for pattern in self.topic_patterns:
-            regex = pattern.replace("+", "[^/]+").replace("#", ".*")
-            self.compiled_patterns.append(re.compile(f"^{regex}$"))
 
     def matches(self, topic: str) -> tuple[bool, str | None]:
-        for i, pattern in enumerate(self.compiled_patterns):
-            if pattern.match(topic):
-                return True, self.topic_patterns[i]
+        for pattern in self.topic_patterns:
+            if mqtt.topic_matches_sub(pattern, topic):
+                return True, pattern
         return False, None
 
     def extract_attributes(self, topic: str, pattern: str) -> dict[str, str]:
@@ -166,7 +162,11 @@ class TopicSpanProcessor:
         return random.random() < self.sample_rate
 
     def create_span(
-        self, topic: str, direction: str, attributes: dict[str, str] | None = None
+        self,
+        topic: str,
+        direction: str,
+        attributes: dict[str, str] | None = None,
+        parent: trace.SpanContext | None = None,
     ) -> trace.Span | None:
         matched, pattern = self.matches(topic)
         if not matched or pattern is None or not self.should_sample():
@@ -182,7 +182,8 @@ class TopicSpanProcessor:
         else:
             kind = SpanKind.CONSUMER
 
-        span = self.tracer.start_span(span_name, kind=kind, attributes=attrs)
+        context = trace.set_span_in_context(trace.NonRecordingSpan(parent)) if parent else None
+        span = self.tracer.start_span(span_name, kind=kind, attributes=attrs, context=context)
         span_created.labels(topic_pattern=pattern, span_kind=direction).inc()
         return span
 
@@ -245,6 +246,7 @@ class MQTTInterceptor:
             self._handle_publish(msg)
 
     def _handle_publish(self, msg: mqtt.MQTTMessage) -> None:
+        last_message_timestamp.set(time.time())
         messages_intercepted.labels(direction="subscribe", topic_pattern="all").inc()
 
         span_context = self.propagator.extract(
@@ -257,7 +259,9 @@ class MQTTInterceptor:
 
         if self.span_processor:
             attrs = {"mqtt.qos": str(msg.qos), "mqtt.retain": str(msg.retain)}
-            span = self.span_processor.create_span(msg.topic, "subscribe", attrs)
+            span = self.span_processor.create_span(
+                msg.topic, "subscribe", attrs, parent=span_context
+            )
             if span:
                 with trace.use_span(span, end_on_exit=True):
                     pass

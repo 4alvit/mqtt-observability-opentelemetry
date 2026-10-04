@@ -166,32 +166,6 @@ class TestSYSMetricsCollector:
         collector._parse_and_store("$SYS/unknown/topic", "123")  # pylint: disable=protected-access
         # Should not crash, just ignore
 
-    def test_record_metric_counter(self):
-        """Test recording counter metric."""
-        config = Config()
-        collector = create_mock_collector(config)
-
-        # Create a mock counter
-        mock_counter = MagicMock()
-        collector.otel_metrics["test_counter"] = mock_counter
-
-        # Verify the collector implementation directly in this focused unit test.
-        collector._record_metric("test_counter", 5, "counter")  # pylint: disable=protected-access
-        mock_counter.add.assert_called_once_with(5)
-
-    def test_record_metric_gauge(self):
-        """Record the latest numeric value on the named gauge."""
-        config = Config()
-        collector = create_mock_collector(config)
-
-        # Create a mock gauge
-        mock_gauge = MagicMock()
-        collector.otel_metrics["test_gauge"] = mock_gauge
-
-        # Verify the collector implementation directly in this focused unit test.
-        collector._record_metric("test_gauge", 42, "gauge")  # pylint: disable=protected-access
-        mock_gauge.set.assert_called_once_with(42)
-
 
 @pytest.mark.asyncio
 class TestSYSMetricsCollectorAsync:
@@ -241,9 +215,9 @@ async def test_malformed_payload_logs_traceback_and_keeps_callback_usable():
     """A corrupt broker payload must not prevent processing the next valid message."""
     config = Config(prometheus=PrometheusConfig(enabled=False))
     collector = create_mock_collector(config)
+    collector._stop_event.set()
     with (
         patch("paho.mqtt.client.Client") as client_class,
-        patch("mosquitto_exporter.app.asyncio.sleep", side_effect=asyncio.CancelledError),
         patch("mosquitto_exporter.app.logger") as log,
     ):
         await collector.start()
@@ -271,3 +245,20 @@ def test_protocol_version_from_environment(monkeypatch, version, expected):
             MQTTConfig()
     else:
         assert MQTTConfig().version == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version,protocol", [(3, 4), (5, 5)])
+async def test_configured_protocol_and_signal_shutdown(version, protocol):
+    """The configured wire protocol reaches Paho and shutdown ends the main loop."""
+    collector = create_mock_collector(
+        Config(mqtt=MQTTConfig(version=version), prometheus=PrometheusConfig(enabled=False))
+    )
+    with patch("mosquitto_exporter.app.mqtt.Client") as client_class:
+        task = asyncio.create_task(collector.start())
+        await asyncio.sleep(0)
+        assert client_class.call_args.kwargs["protocol"] == protocol
+        collector.stop()
+        await asyncio.wait_for(task, timeout=1)
+        client_class.return_value.disconnect.assert_called_once()
+        client_class.return_value.loop_stop.assert_called_once()
