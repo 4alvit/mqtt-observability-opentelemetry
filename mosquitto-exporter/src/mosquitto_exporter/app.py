@@ -6,7 +6,7 @@ import math
 import signal
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -35,6 +35,7 @@ class SYSMetric:
     type: str
     description: str
     value_type: builtins.type
+    attributes: dict[str, str] = field(default_factory=dict)
 
 
 SYS_METRICS = [
@@ -241,17 +242,101 @@ SYS_METRICS = [
 ]
 
 
+def flashmq_metrics(thread_count: int) -> list[SYSMetric]:
+    """Select FlashMQ's exact statistics topics, with bounded worker series."""
+    metrics_list = [
+        SYSMetric(
+            "$SYS/broker/clients/total",
+            "flashmq_clients_connected",
+            "gauge",
+            "Connected FlashMQ clients",
+            int,
+        ),
+        SYSMetric(
+            "$SYS/broker/load/messages/received/total",
+            "flashmq_messages_received_total",
+            "counter",
+            "Total messages received",
+            int,
+        ),
+        SYSMetric(
+            "$SYS/broker/load/messages/sent/total",
+            "flashmq_messages_sent_total",
+            "counter",
+            "Total messages sent",
+            int,
+        ),
+        SYSMetric(
+            "$SYS/broker/load/messages/received/persecond",
+            "flashmq_messages_received_per_second",
+            "gauge",
+            "Broker-reported received messages per second",
+            float,
+        ),
+        SYSMetric(
+            "$SYS/broker/load/messages/sent/persecond",
+            "flashmq_messages_sent_per_second",
+            "gauge",
+            "Broker-reported sent messages per second",
+            float,
+        ),
+        SYSMetric(
+            "$SYS/broker/subscriptions/count",
+            "flashmq_subscriptions_count",
+            "gauge",
+            "Current subscriptions",
+            int,
+        ),
+        SYSMetric(
+            "$SYS/broker/retained messages/count",
+            "flashmq_retained_messages_count",
+            "gauge",
+            "Current retained messages",
+            int,
+        ),
+        SYSMetric(
+            "$SYS/broker/sessions/total", "flashmq_sessions_count", "gauge", "Current sessions", int
+        ),
+    ]
+    for thread in range(thread_count):
+        for suffix, name, description in (
+            ("latest__ms", "flashmq_thread_drift_milliseconds", "Latest worker event-loop drift"),
+            (
+                "moving_avg__ms",
+                "flashmq_thread_drift_moving_average_milliseconds",
+                "Moving average of worker event-loop drift",
+            ),
+        ):
+            metrics_list.append(
+                SYSMetric(
+                    f"$SYS/broker/threads/{thread}/drift/{suffix}",
+                    name,
+                    "gauge",
+                    description,
+                    int,
+                    {"thread": str(thread)},
+                )
+            )
+    return metrics_list
+
+
 class SYSMetricsCollector:
     """Receive broker statistics and expose them through configured metric readers."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.sys_metrics = (
+            flashmq_metrics(config.metrics.flashmq_threads)
+            if config.metrics.broker_type == "flashmq"
+            else SYS_METRICS
+        )
         self.client: mqtt.Client | None = None
         self.metrics_data: dict[str, Any] = {}
         self.last_update: float = 0
         self.otel_metrics: dict[str, Any] = {}
         self._values: dict[str, int | float] = {}
         self._counter_epochs: dict[str, int] = {}
+        self._value_updates: dict[str, float] = {}
         self._values_lock = threading.Lock()
         self._stop_event = asyncio.Event()
         self._setup_otel()
@@ -291,36 +376,47 @@ class SYSMetricsCollector:
 
     def _create_otel_metrics(self) -> None:
         self.otel_metrics = {}
-        for sys_metric in SYS_METRICS:
-            if sys_metric.value_type is str:
-                continue
+        groups: dict[str, list[SYSMetric]] = {}
+        for sys_metric in self.sys_metrics:
+            if sys_metric.value_type is not str:
+                groups.setdefault(sys_metric.name, []).append(sys_metric)
+        for name, definitions in groups.items():
 
             def observe(
-                _options: CallbackOptions,
-                name: str = sys_metric.name,
-                is_counter: bool = sys_metric.type == "counter",
+                _options: CallbackOptions, series: list[SYSMetric] = definitions
             ) -> list[Observation]:
                 with self._values_lock:
-                    if time.monotonic() - self.last_update > self.config.metrics.stale_threshold:
-                        return []
-                    value = self._values.get(name)
-                    if value is None:
-                        return []
-                    attributes = (
-                        {"counter_epoch": self._counter_epochs.get(name, 0)} if is_counter else None
-                    )
-                    return [Observation(value, attributes)]
+                    now = time.monotonic()
+                    observations = []
+                    for definition in series:
+                        updated = (
+                            self._value_updates.get(definition.topic, 0)
+                            if self.config.metrics.broker_type == "flashmq"
+                            else self.last_update
+                        )
+                        value = self._values.get(definition.topic)
+                        if (
+                            value is not None
+                            and now - updated <= self.config.metrics.stale_threshold
+                        ):
+                            attributes: dict[str, str | int] = dict(definition.attributes)
+                            if definition.type == "counter":
+                                attributes["counter_epoch"] = self._counter_epochs.get(
+                                    definition.topic, 0
+                                )
+                            observations.append(Observation(value, attributes=attributes))
+                    return observations
 
             # $SYS publishes absolute broker totals. Observable instruments report
             # the current snapshot without adding it twice. A broker reset gets
             # a new stream identity so delta readers never compute a negative sum.
             create = (
                 self.meter.create_observable_counter
-                if sys_metric.type == "counter"
+                if definitions[0].type == "counter"
                 else self.meter.create_observable_gauge
             )
-            self.otel_metrics[sys_metric.name] = create(
-                sys_metric.name, callbacks=[observe], description=sys_metric.description
+            self.otel_metrics[name] = create(
+                name, callbacks=[observe], description=definitions[0].description
             )
 
     def _on_connect(
@@ -331,8 +427,12 @@ class SYSMetricsCollector:
         reason_code: mqtt.ReasonCode,
         _properties: mqtt.Properties | None,
     ) -> None:
-        logger.info("Connected to Mosquitto", reason_code=reason_code)
-        topics = [m.topic for m in SYS_METRICS]
+        logger.info(
+            "Connected to MQTT broker",
+            broker_type=self.config.metrics.broker_type,
+            reason_code=reason_code,
+        )
+        topics = [m.topic for m in self.sys_metrics]
         for topic in topics:
             client.subscribe(topic, qos=0)
 
@@ -345,7 +445,7 @@ class SYSMetricsCollector:
             logger.warning("Failed to parse message", topic=msg.topic, error=str(e), exc_info=True)
 
     def _parse_and_store(self, topic: str, value: str) -> None:
-        for sys_metric in SYS_METRICS:
+        for sys_metric in self.sys_metrics:
             if topic == sys_metric.topic:
                 try:
                     if sys_metric.topic == "$SYS/broker/uptime":
@@ -355,8 +455,13 @@ class SYSMetricsCollector:
                         not math.isfinite(parsed) or parsed < 0
                     ):
                         raise ValueError("Expected a finite nonnegative broker statistic")
-                    self.metrics_data[sys_metric.name] = parsed
-                    self._record_metric(sys_metric.name, parsed, sys_metric.type)
+                    if sys_metric.attributes:
+                        self.metrics_data.setdefault(sys_metric.name, {})[
+                            sys_metric.attributes["thread"]
+                        ] = parsed
+                    else:
+                        self.metrics_data[sys_metric.name] = parsed
+                    self._record_metric(sys_metric.topic, parsed, sys_metric.type)
                     self.last_update = time.monotonic()
                 except ValueError:
                     logger.warning(
@@ -367,15 +472,16 @@ class SYSMetricsCollector:
                     )
                 break
 
-    def _record_metric(self, name: str, value: int | float, metric_type: str) -> None:
+    def _record_metric(self, topic: str, value: int | float, metric_type: str) -> None:
         # Broker version is text metadata, not a numeric gauge sample.
         if not isinstance(value, (int, float)):
             return
         with self._values_lock:
-            previous = self._values.get(name)
+            previous = self._values.get(topic)
             if metric_type == "counter" and previous is not None and value < previous:
-                self._counter_epochs[name] = self._counter_epochs.get(name, 0) + 1
-            self._values[name] = value
+                self._counter_epochs[topic] = self._counter_epochs.get(topic, 0) + 1
+            self._values[topic] = value
+            self._value_updates[topic] = time.monotonic()
 
     async def start(self) -> None:
         """Connect to the broker and run periodic metric exports until cancelled."""
@@ -398,7 +504,8 @@ class SYSMetricsCollector:
             )
 
         logger.info(
-            "Connecting to Mosquitto",
+            "Connecting to MQTT broker",
+            broker_type=self.config.metrics.broker_type,
             host=self.config.mqtt.upstream_host,
             port=self.config.mqtt.upstream_port,
         )

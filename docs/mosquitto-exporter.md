@@ -278,3 +278,35 @@ so an unchanged counter remains valid while broker heartbeat messages arrive.
 This does not establish an independent delivery timestamp for every topic.
 
 See the [Mosquitto broker statistics reference](https://mosquitto.org/man/mosquitto-8.html).
+
+
+## FlashMQ profile
+
+Set `METRICS_BROKER_TYPE=flashmq` for FlashMQ; the default remains `mosquitto`.
+Profiles select different exact `$SYS` topics and are not inferred from a TCP
+connection. A connected exporter using the wrong profile does not establish
+that broker statistics are available.
+
+FlashMQ exports `flashmq_clients_connected`, `flashmq_messages_received_total`,
+`flashmq_messages_sent_total`, `flashmq_messages_received_per_second`,
+`flashmq_messages_sent_per_second`, `flashmq_subscriptions_count`,
+`flashmq_retained_messages_count`, and `flashmq_sessions_count`. Sessions,
+subscriptions and retained-message counts are current gauges; only received and
+sent message totals are cumulative counters. Rates are the broker-reported
+per-second values, not Mosquitto's one-minute averages.
+
+`METRICS_FLASHMQ_THREADS` defaults to `2` and accepts `1` through `32`. Set it to
+the broker's worker count. The exporter subscribes to exactly two drift topics
+per worker numbered from zero: `latest__ms` and `moving_avg__ms`. They produce
+`flashmq_thread_drift_milliseconds` and
+`flashmq_thread_drift_moving_average_milliseconds`, each with a `thread` label.
+The profile uses `8 + 2 * METRICS_FLASHMQ_THREADS` exact subscriptions and never
+subscribes to `$SYS/#` or an unbounded thread wildcard.
+
+The topic contract is based on [FlashMQ 1.23.2 statistics publication](https://github.com/halfgaar/FlashMQ/blob/v1.23.2/threaddata.cpp#L454).
+FlashMQ periodically republishes these statistics, so each numeric series is
+omitted after its own `METRICS_STALE_THRESHOLD` without a valid receipt. An absent
+configured worker produces no sample, not a fabricated zero. This profile does
+not synthesize Mosquitto uptime, byte totals, version, or disconnected-client
+statistics from unrelated FlashMQ values. Broker statistics and scheduler drift
+provide diagnostics; they do not alone identify the cause of a client timeout.
