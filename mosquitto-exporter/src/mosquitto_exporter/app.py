@@ -18,10 +18,10 @@ from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
-from prometheus_client import start_http_server
 
 from mosquitto_exporter._version import __version__
 from mosquitto_exporter.config import Config, load_config
+from mosquitto_exporter.readiness import BrokerReadiness, start_metrics_server
 
 logger = structlog.get_logger()
 
@@ -330,6 +330,9 @@ class SYSMetricsCollector:
             if config.metrics.broker_type == "flashmq"
             else SYS_METRICS
         )
+        self.readiness = BrokerReadiness(min(config.metrics.stale_threshold, 45))
+        self._metrics_server: Any = None
+        self._metrics_thread: Any = None
         self.client: mqtt.Client | None = None
         self.metrics_data: dict[str, Any] = {}
         self.last_update: float = 0
@@ -432,9 +435,22 @@ class SYSMetricsCollector:
             broker_type=self.config.metrics.broker_type,
             reason_code=reason_code,
         )
+        self.readiness.connected(reason_code == 0)
+        if reason_code != 0:
+            return
         topics = [m.topic for m in self.sys_metrics]
         for topic in topics:
             client.subscribe(topic, qos=0)
+
+    def _on_disconnect(
+        self,
+        _client: mqtt.Client,
+        _userdata: Any,
+        _flags: mqtt.DisconnectFlags,
+        _reason_code: mqtt.ReasonCode,
+        _properties: mqtt.Properties | None,
+    ) -> None:
+        self.readiness.connected(False)
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> None:
         try:
@@ -451,6 +467,11 @@ class SYSMetricsCollector:
                     if sys_metric.topic == "$SYS/broker/uptime":
                         value = value.removesuffix(" seconds")
                     parsed = sys_metric.value_type(value)
+                    if sys_metric.name in (
+                        "flashmq_clients_connected",
+                        "mosquitto_clients_connected",
+                    ):
+                        self.readiness.observe(parsed)
                     if isinstance(parsed, (int, float)) and (
                         not math.isfinite(parsed) or parsed < 0
                     ):
@@ -463,7 +484,14 @@ class SYSMetricsCollector:
                         self.metrics_data[sys_metric.name] = parsed
                     self._record_metric(sys_metric.topic, parsed, sys_metric.type)
                     self.last_update = time.monotonic()
+                    if self.config.metrics.broker_type == "mosquitto":
+                        self.readiness.refresh()
                 except ValueError:
+                    if sys_metric.name in (
+                        "flashmq_clients_connected",
+                        "mosquitto_clients_connected",
+                    ):
+                        self.readiness.observe(math.nan)
                     logger.warning(
                         "Failed to parse value",
                         topic=topic,
@@ -491,6 +519,7 @@ class SYSMetricsCollector:
             protocol=mqtt.MQTTv5 if self.config.mqtt.version == 5 else mqtt.MQTTv311,
         )
         self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
         if self.config.mqtt.username:
@@ -517,7 +546,9 @@ class SYSMetricsCollector:
         self.client.loop_start()
 
         if self.config.prometheus.enabled:
-            start_http_server(self.config.prometheus.port, addr="0.0.0.0")
+            self._metrics_server, self._metrics_thread = start_metrics_server(
+                self.config.prometheus.port, self.readiness.is_ready, addr="0.0.0.0"
+            )
             logger.info("Prometheus metrics server started", port=self.config.prometheus.port)
 
         try:
@@ -538,6 +569,13 @@ class SYSMetricsCollector:
     def stop(self) -> None:
         """Stop the MQTT network loop and disconnect the collector."""
         self._stop_event.set()
+        self.readiness.connected(False)
+        if self._metrics_server:
+            self._metrics_server.shutdown()
+            self._metrics_thread.join(timeout=5)
+            self._metrics_server.server_close()
+            self._metrics_server = None
+            self._metrics_thread = None
         if self.client:
             self.client.disconnect()
             self.client.loop_stop()

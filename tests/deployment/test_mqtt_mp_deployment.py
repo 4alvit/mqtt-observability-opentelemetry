@@ -1,28 +1,17 @@
 """Exercise the deployed readiness commands and the isolated MP overlay."""
 
-import io
-import math
 import os
-import runpy
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import yaml
 from mosquitto_exporter.config import PrometheusConfig
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
-from opentelemetry.metrics import Observation
-from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import OTELResourceDetector
-from prometheus_client import CollectorRegistry, Gauge, generate_latest
 from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 OVERLAY = ROOT / "deploy" / "mqtt-k3s"
-NOW = 2_000_000_000.0
-CLIENTS = "flashmq_clients_connected"
-HEARTBEAT = "mqtt_interceptor_last_message_timestamp_seconds"
 
 
 class MQTTDeploymentTests(unittest.TestCase):
@@ -36,115 +25,6 @@ class MQTTDeploymentTests(unittest.TestCase):
             for doc in cls.documents
             if doc["kind"] == "Deployment"
         }
-
-    def run_probe(self, component, body):
-        """Run the exact manifest command; only HTTP I/O and wall time are replaced."""
-        container = self.deployments[component]["spec"]["template"]["spec"][
-            "containers"
-        ][0]
-        command = container["readinessProbe"]["exec"]["command"]
-        self.assertEqual(command[:2], ["python", "-c"])
-        self.assertEqual(len(command), 3)
-        port = 9494 if component == "mosquitto-exporter" else 9464
-
-        def response(url, timeout):
-            self.assertEqual(url, f"http://127.0.0.1:{port}/metrics")
-            self.assertEqual(timeout, 3)
-            if isinstance(body, Exception):
-                raise body
-            return io.BytesIO(body)
-
-        with (
-            patch("urllib.request.urlopen", side_effect=response),
-            patch("time.time", return_value=NOW),
-            tempfile.TemporaryDirectory() as directory,
-        ):
-            script = Path(directory) / "readiness.py"
-            script.write_text(command[2])
-            runpy.run_path(str(script))
-
-    def test_real_otel_prometheus_samples_with_and_without_scope_labels(self):
-        """The default OTel scope labels must not make a healthy exporter unready."""
-        for scope_labels in (True, False):
-            with self.subTest(scope_labels=scope_labels):
-                registry = CollectorRegistry()
-                reader = PrometheusMetricReader(
-                    registry=registry, scope_info_enabled=scope_labels
-                )
-                provider = MeterProvider(metric_readers=[reader])
-                present = [True]
-                provider.get_meter(
-                    "mosquitto_exporter.app", "test"
-                ).create_observable_gauge(
-                    CLIENTS,
-                    callbacks=[
-                        lambda _, present=present: (
-                            [Observation(25)] if present[0] else []
-                        )
-                    ],
-                )
-                try:
-                    text = generate_latest(registry)
-                    self.assertIn(
-                        (CLIENTS + ("{" if scope_labels else " ")).encode(), text
-                    )
-                    self.run_probe("mosquitto-exporter", text)
-                    present[0] = False
-                    with self.assertRaises(AssertionError):
-                        self.run_probe("mosquitto-exporter", generate_latest(registry))
-                finally:
-                    provider.shutdown()
-
-    def test_real_heartbeat_export_accepts_optional_labels(self):
-        for labels in ((), ("broker",)):
-            with self.subTest(labels=labels):
-                registry = CollectorRegistry()
-                gauge = Gauge(
-                    HEARTBEAT, "Latest receipt", labelnames=labels, registry=registry
-                )
-                sample = gauge.labels("cerbo") if labels else gauge
-                sample.set(NOW - 10)
-                self.run_probe("mqtt-interceptor", generate_latest(registry))
-
-    def test_heartbeat_rejects_stale_future_and_nonfinite_samples(self):
-        for value in (NOW - 45, NOW - 300, NOW + 1, 0, math.nan, math.inf, -math.inf):
-            with self.subTest(value=value):
-                registry = CollectorRegistry()
-                Gauge(HEARTBEAT, "Latest receipt", registry=registry).set(value)
-                with self.assertRaises(AssertionError):
-                    self.run_probe("mqtt-interceptor", generate_latest(registry))
-
-    def test_client_count_requires_finite_nonnegative_sample(self):
-        self.run_probe("mosquitto-exporter", f"{CLIENTS} 0\n".encode())
-        for value in ("NaN", "+Inf", "-Inf", "-1"):
-            with self.subTest(value=value), self.assertRaises(AssertionError):
-                self.run_probe(
-                    "mosquitto-exporter",
-                    f'{CLIENTS}{{otel_scope_name="exporter"}} {value}\n'.encode(),
-                )
-
-    def test_missing_wrong_name_or_ambiguous_series_fail_closed(self):
-        for component, metric, value in (
-            ("mosquitto-exporter", CLIENTS, 25),
-            ("mqtt-interceptor", HEARTBEAT, NOW - 1),
-        ):
-            bodies = (
-                b"",
-                f"# HELP {metric} Not a sample\n# TYPE {metric} gauge\n".encode(),
-                f"{metric}_unrelated {value}\n".encode(),
-                f'{metric}{{scope="one"}} {value}\n{metric}{{scope="two"}} {value}\n'.encode(),
-            )
-            for body in bodies:
-                with (
-                    self.subTest(component=component, body=body),
-                    self.assertRaises(AssertionError),
-                ):
-                    self.run_probe(component, body)
-
-    def test_probe_network_failure_is_not_a_success(self):
-        for component in ("mqtt-interceptor", "mosquitto-exporter"):
-            with self.subTest(component=component), self.assertRaises(TimeoutError):
-                self.run_probe(component, TimeoutError())
 
     def test_exporter_port_uses_explicit_integer_despite_service_name_collision(self):
         container = self.deployments["mosquitto-exporter"]["spec"]["template"]["spec"][
@@ -224,8 +104,23 @@ class MQTTDeploymentTests(unittest.TestCase):
                     self.assertEqual(
                         set(container["resources"][budget]), {"cpu", "memory"}
                     )
+                self.assertEqual(container["resources"]["limits"]["cpu"], "500m")
+                self.assertEqual(
+                    container["resources"]["requests"]["cpu"],
+                    "50m" if name == "mqtt-otel-collector" else "250m",
+                )
                 if name == "mqtt-otel-collector":
                     continue
+                self.assertNotIn("exec", container["readinessProbe"])
+                port = 9464 if name == "mqtt-interceptor" else 9494
+                self.assertEqual(
+                    container["readinessProbe"]["httpGet"],
+                    {"path": "/ready", "port": port},
+                )
+                for probe in ("startupProbe", "livenessProbe"):
+                    self.assertEqual(
+                        container[probe]["httpGet"], {"path": "/metrics", "port": port}
+                    )
                 env = {item["name"]: item["value"] for item in container["env"]}
                 self.assertEqual(env["MQTT_UPSTREAM_HOST"], "192.168.160.150")
                 self.assertEqual(env["MQTT_UPSTREAM_PORT"], "1883")

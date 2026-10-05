@@ -12,9 +12,10 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.trace import SpanKind, TraceFlags, TraceState
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram
 
 from mqtt_interceptor.config import Config, load_config
+from mqtt_interceptor.readiness import BrokerReadiness, start_metrics_server
 
 logger = structlog.get_logger()
 
@@ -194,6 +195,9 @@ class MQTTInterceptor:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.running = False
+        self.readiness = BrokerReadiness()
+        self._metrics_server: Any = None
+        self._metrics_thread: Any = None
         self.client: mqtt.Client | None = None
         self.propagator = TraceContextPropagator(config.trace.propagator)
         self.tracer: trace.Tracer | None = None
@@ -238,15 +242,34 @@ class MQTTInterceptor:
         properties: mqtt.Properties | None,
     ) -> None:
         logger.info("Interceptor connected", reason_code=reason_code)
+        self.readiness.connected(reason_code == 0)
+        if reason_code != 0:
+            return
         for pattern in self.config.trace.topic_patterns:
             client.subscribe(pattern, qos=2)
+
+    def _on_disconnect(
+        self,
+        _client: mqtt.Client,
+        _userdata: Any,
+        _flags: mqtt.DisconnectFlags,
+        _reason_code: mqtt.ReasonCode,
+        _properties: mqtt.Properties | None,
+    ) -> None:
+        self.readiness.connected(False)
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         with intercept_latency.labels(direction="subscribe").time():
             self._handle_publish(msg)
 
     def _handle_publish(self, msg: mqtt.MQTTMessage) -> None:
-        last_message_timestamp.set(time.time())
+        received_at = time.time()
+        last_message_timestamp.set(received_at)
+        if any(
+            mqtt.topic_matches_sub(pattern, msg.topic)
+            for pattern in self.config.trace.topic_patterns
+        ):
+            self.readiness.observe(received_at)
         messages_intercepted.labels(direction="subscribe", topic_pattern="all").inc()
 
         span_context = self.propagator.extract(
@@ -275,6 +298,7 @@ class MQTTInterceptor:
             protocol=mqtt.MQTTv5 if self.config.mqtt.version == 5 else mqtt.MQTTv311,
         )
         self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
         if self.config.mqtt.username:
@@ -290,7 +314,9 @@ class MQTTInterceptor:
         self.client.loop_start()
 
         if self.config.metrics.enabled:
-            start_http_server(self.config.metrics.port)
+            self._metrics_server, self._metrics_thread = start_metrics_server(
+                self.config.metrics.port, self.readiness.is_ready
+            )
             logger.info("Metrics server started", port=self.config.metrics.port)
 
         logger.info(
@@ -300,6 +326,13 @@ class MQTTInterceptor:
 
     async def stop(self) -> None:
         self.running = False
+        self.readiness.connected(False)
+        if self._metrics_server:
+            self._metrics_server.shutdown()
+            self._metrics_thread.join(timeout=5)
+            self._metrics_server.server_close()
+            self._metrics_server = None
+            self._metrics_thread = None
         if self.client:
             self.client.loop_stop()
             self.client.disconnect()

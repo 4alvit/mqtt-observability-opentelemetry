@@ -43,7 +43,7 @@ spec:
             - ALL
         resources:
           requests:
-            cpu: 50m
+            cpu: 250m
             memory: 96Mi
           limits:
             cpu: 500m
@@ -69,29 +69,9 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: cerbo-mqtt-observer
         readinessProbe:
-          exec:
-            command:
-            - python
-            - -c
-            - |
-              import math
-              import time
-              import urllib.request
-              from prometheus_client.parser import text_string_to_metric_families
-
-              with urllib.request.urlopen("http://127.0.0.1:9464/metrics", timeout=3) as response:
-                  text = response.read().decode()
-              values = [
-                  sample.value
-                  for family in text_string_to_metric_families(text)
-                  for sample in family.samples
-                  if sample.name == "mqtt_interceptor_last_message_timestamp_seconds"
-              ]
-              assert len(values) == 1, "Expected exactly one current broker sample"
-              value = values[0]
-              assert math.isfinite(value), "Non-finite broker sample"
-              age = time.time() - value
-              assert 0 <= age < 45, "Broker heartbeat is stale or in the future"
+          httpGet:
+            path: /ready
+            port: 9464
           periodSeconds: 15
           timeoutSeconds: 5
         livenessProbe:
@@ -151,7 +131,7 @@ spec:
             - ALL
         resources:
           requests:
-            cpu: 50m
+            cpu: 250m
             memory: 96Mi
           limits:
             cpu: 500m
@@ -183,28 +163,9 @@ spec:
         - name: PROMETHEUS_PORT
           value: '9494'
         readinessProbe:
-          exec:
-            command:
-            - python
-            - -c
-            - |
-              import math
-              import time
-              import urllib.request
-              from prometheus_client.parser import text_string_to_metric_families
-
-              with urllib.request.urlopen("http://127.0.0.1:9494/metrics", timeout=3) as response:
-                  text = response.read().decode()
-              values = [
-                  sample.value
-                  for family in text_string_to_metric_families(text)
-                  for sample in family.samples
-                  if sample.name == "flashmq_clients_connected"
-              ]
-              assert len(values) == 1, "Expected exactly one current broker sample"
-              value = values[0]
-              assert math.isfinite(value), "Non-finite broker sample"
-              assert value >= 0, "Invalid connected-client count"
+          httpGet:
+            path: /ready
+            port: 9494
           periodSeconds: 15
           timeoutSeconds: 5
         livenessProbe:
