@@ -25,6 +25,13 @@ CPU/memory. NetworkPolicy permits only DNS, the existing Cerbo MQTT endpoint,
 internal OTLP/Tempo traffic and Prometheus scrapes. There is no public ingress.
 MQTT/OTLP use the existing trusted private network; no Internet listener is added.
 
+Service links are disabled on all three pods: Kubernetes otherwise injects a
+`PROMETHEUS_PORT=tcp://...` value from the existing Prometheus Service, which the
+exporter's integer port setting rejects. The exporter also explicitly selects
+port 9494. Both readers retain their unique `OTEL_SERVICE_NAME`; the optional
+`OTEL_RESOURCE_ATTRIBUTES` override is omitted because its former JSON value
+conflicts with the standard SDK detector's comma-separated key/value format.
+
 ## Apply and acceptance
 
 Use the reviewed committed overlay only after all required checks pass:
@@ -43,6 +50,10 @@ observer readiness probe requires a heartbeat received within 45 seconds. Both
 probes parse exact Prometheus sample names with optional labels, reject missing
 or ambiguous series and non-finite values, and fail closed for invalid ages.
 All startup, readiness and liveness requests allow five seconds for scheduling.
+Startup allows 36 attempts at five-second intervals (180 seconds): the initial
+MP observer needed about 142 seconds to expose metrics during a loaded-node
+cold start, exceeding the former 120-second budget. Readiness and liveness
+thresholds, probe timeouts and the 45-second receipt freshness limit are unchanged.
 The collector expires cached Prometheus samples after 60 seconds without a new
 OTLP point; this is separate from the exporter's 45-second receipt limit. A point
 exported just before that limit can therefore remain visible in the collector
@@ -51,8 +62,20 @@ HTTP metrics alone are insufficient acceptance: check increasing broker counters
 in Prometheus, fresh drift samples and an actual `cerbo-mqtt-observer` span in
 Tempo. Check existing Venus MCP reads and its restart count before and after.
 
-The collector image is upstream 0.161.0: the newer 0.162.0 GitHub release did not
-have a retrievable stable container manifest when this overlay was prepared.
+The collector runs upstream 0.161.0 through the existing NAS registry because
+MP's direct Docker Hub pulls timed out during TLS negotiation. The cached Linux
+AMD64 image from upstream reference
+`otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1`
+was tagged and pushed without rebuilding. The mirror pin is
+`192.168.167.25:5050/mqtt-otel-collector@sha256:b5cf983651c32c3ca13f936deb51742015a54d121f388cac248923ddeb8cc9fc`.
+Source and mirror have the same image ID
+`sha256:0fd3483345a3fa17f3ffe760eea2413f640724c8204ea11a58c8e3927b2c0fe7`
+and all three RootFS layer hashes match. The repository manifest digest changes
+with this native mirror; the verified image contents and collector configuration
+are preserved. No TLS verification or firewall settings were changed.
+
+The newer 0.162.0 GitHub release did not have a retrievable stable container
+manifest when this overlay was prepared.
 `collector-runtime.yaml` is the standalone copy used for upstream collector
 `validate`; tests require it to equal the ConfigMap payload.
 

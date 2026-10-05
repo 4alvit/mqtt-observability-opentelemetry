@@ -64,7 +64,7 @@ if [[ -n "${2:-}" ]]; then
 fi
 if [[ "$mode" == test || "$mode" == all ]]; then
   # Execute the exact checked-in readiness commands and MP deployment safeguards.
-  uv run --project mosquitto-exporter --locked python -m unittest discover -s tests/deployment -p 'test_*.py' -v
+  PYTHONPATH="$PWD/mosquitto-exporter/src" uv run --project mosquitto-exporter --locked python -m unittest discover -s tests/deployment -p 'test_*.py' -v
 fi
 if [[ "$mode" != integration ]]; then
   for component in "${components[@]}"; do
