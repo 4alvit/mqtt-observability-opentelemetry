@@ -20,7 +20,7 @@ spec:
         prometheus.io/scrape: 'true'
         prometheus.io/port: '9464'
         prometheus.io/path: /metrics
-        victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
+        victron.2560801.xyz/source-commit: 924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: mqtt-interceptor
-        image: 192.168.167.25:5050/mqtt-interceptor@sha256:53479a0aad7aa8e7d7b08945f57392db021a948587b98fa42e9c1747e70cb3cf
+        image: 192.168.167.25:5050/mqtt-interceptor@sha256:591f237c711f1673f66f4cbe7fcd2a78e8e96b80ec8a163927b8304e77ef4b58
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -43,7 +43,7 @@ spec:
             - ALL
         resources:
           requests:
-            cpu: 50m
+            cpu: 250m
             memory: 96Mi
           limits:
             cpu: 500m
@@ -69,29 +69,9 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: cerbo-mqtt-observer
         readinessProbe:
-          exec:
-            command:
-            - python
-            - -c
-            - |
-              import math
-              import time
-              import urllib.request
-              from prometheus_client.parser import text_string_to_metric_families
-
-              with urllib.request.urlopen("http://127.0.0.1:9464/metrics", timeout=3) as response:
-                  text = response.read().decode()
-              values = [
-                  sample.value
-                  for family in text_string_to_metric_families(text)
-                  for sample in family.samples
-                  if sample.name == "mqtt_interceptor_last_message_timestamp_seconds"
-              ]
-              assert len(values) == 1, "Expected exactly one current broker sample"
-              value = values[0]
-              assert math.isfinite(value), "Non-finite broker sample"
-              age = time.time() - value
-              assert 0 <= age < 45, "Broker heartbeat is stale or in the future"
+          httpGet:
+            path: /ready
+            port: 9464
           periodSeconds: 15
           timeoutSeconds: 5
         livenessProbe:
@@ -128,7 +108,7 @@ spec:
     metadata:
       labels: *id001
       annotations:
-        victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
+        victron.2560801.xyz/source-commit: 924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -142,7 +122,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: mosquitto-exporter
-        image: 192.168.167.25:5050/mosquitto-exporter@sha256:ef96d818c7a3099aa9bb99ca7108eb783502e01c98ecafd0dad1aa1ea1b58136
+        image: 192.168.167.25:5050/mosquitto-exporter@sha256:438a08943e741a50632dbf7948f2b6b3f982972c56bb9ed52dd73e77e6c40291
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -151,7 +131,7 @@ spec:
             - ALL
         resources:
           requests:
-            cpu: 50m
+            cpu: 250m
             memory: 96Mi
           limits:
             cpu: 500m
@@ -183,28 +163,9 @@ spec:
         - name: PROMETHEUS_PORT
           value: '9494'
         readinessProbe:
-          exec:
-            command:
-            - python
-            - -c
-            - |
-              import math
-              import time
-              import urllib.request
-              from prometheus_client.parser import text_string_to_metric_families
-
-              with urllib.request.urlopen("http://127.0.0.1:9494/metrics", timeout=3) as response:
-                  text = response.read().decode()
-              values = [
-                  sample.value
-                  for family in text_string_to_metric_families(text)
-                  for sample in family.samples
-                  if sample.name == "flashmq_clients_connected"
-              ]
-              assert len(values) == 1, "Expected exactly one current broker sample"
-              value = values[0]
-              assert math.isfinite(value), "Non-finite broker sample"
-              assert value >= 0, "Invalid connected-client count"
+          httpGet:
+            path: /ready
+            port: 9494
           periodSeconds: 15
           timeoutSeconds: 5
         livenessProbe:

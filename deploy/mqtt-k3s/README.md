@@ -16,9 +16,9 @@ change the MQTT broker, or redirect application traffic.
   batching and queues, no debug payload exporter, and no persistent storage.
 
 The observer and exporter images were built from source
-[`0e22c6e357a51cb58b394712f47bf15cd87c7c6b`](https://github.com/4alvit/mqtt-observability-opentelemetry/commit/0e22c6e357a51cb58b394712f47bf15cd87c7c6b).
-Their manifest pins are respectively `sha256:53479a0aad7aa8e7d7b08945f57392db021a948587b98fa42e9c1747e70cb3cf`
-and `sha256:ef96d818c7a3099aa9bb99ca7108eb783502e01c98ecafd0dad1aa1ea1b58136`.
+[`924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d`](https://github.com/4alvit/mqtt-observability-opentelemetry/commit/924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d).
+Their manifest pins are respectively `sha256:591f237c711f1673f66f4cbe7fcd2a78e8e96b80ec8a163927b8304e77ef4b58`
+and `sha256:438a08943e741a50632dbf7948f2b6b3f982972c56bb9ed52dd73e77e6c40291`.
 All images are immutable digests. Each workload is fixed to one replica on MP,
 uses a read-only root, no privileges or service-account token, and has bounded
 CPU/memory. NetworkPolicy permits only DNS, the existing Cerbo MQTT endpoint,
@@ -44,11 +44,35 @@ kubectl --context k3s-heaven -n observability rollout status deployment/mosquitt
 kubectl --context k3s-heaven -n observability rollout status deployment/mqtt-interceptor
 ```
 
-The exporter readiness probe requires a fresh FlashMQ client-count sample;
-individual FlashMQ statistics expire after 45 seconds without an update. The
-observer readiness probe requires a heartbeat received within 45 seconds. Both
-probes parse exact Prometheus sample names with optional labels, reject missing
-or ambiguous series and non-finite values, and fail closed for invalid ages.
+Both readers expose `GET /ready` on their existing metrics listener (9464 for
+the observer, 9494 for the exporter). Readiness reads a small, locked local
+snapshot without collecting Prometheus/OTel metrics, contacting the broker or
+starting another Python process. It returns 503 before a valid receipt, after a
+disconnect or unsuccessful connection, and when receipt age reaches 45 seconds;
+a successful reconnect requires a new sample. Receipt age uses a monotonic
+clock and invalid or future ages fail closed. `/metrics`, its content negotiation,
+compression and query behavior remain unchanged; no listener or port is added.
+
+The FlashMQ exporter requires a finite, nonnegative client-count sample from the
+current connection, received within 45 seconds. Its individual exported
+statistics also expire after 45 seconds without an update. The generic Mosquitto
+profile allows other fresh accepted broker statistics to refresh a client count
+already observed in this connection, because unchanged Mosquitto SYS values may
+not be republished. The observer requires a receipt on a configured topic within
+45 seconds; application payloads do not need to be numeric. Neither endpoint
+publishes MQTT messages.
+
+Each Python reader requests 250m CPU and retains its 500m CPU limit. In the loaded
+MP snapshot on 2026-10-05 UTC, their former 50m reservations had cgroup weight 2.
+Over ten seconds, observer/exporter cgroups consumed about 450m/292m CPU while
+their main processes consumed only 76m/31m; separate readiness Python processes
+and CPU throttling were observed. An SDK-importing probe exceeded a ten-second
+diagnostic alarm. Even a `python -S` standard-library candidate took 10.4 seconds
+for imports and validation (26.1 seconds including kubectl/CRI transport), so an
+exec probe could not meet the unchanged five-second limit. The in-process HTTP
+check removes that repeated startup cost. These measurements do not by
+themselves attribute every cold-start delay to CPU contention.
+
 All startup, readiness and liveness requests allow five seconds for scheduling.
 Startup allows 36 attempts at five-second intervals (180 seconds): the initial
 MP observer needed about 142 seconds to expose metrics during a loaded-node

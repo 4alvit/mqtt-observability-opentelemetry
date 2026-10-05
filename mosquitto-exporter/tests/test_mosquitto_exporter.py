@@ -180,14 +180,15 @@ class TestSYSMetricsCollectorAsync:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
 
-            with patch("mosquitto_exporter.app.start_http_server") as start_http_server:
+            with patch("mosquitto_exporter.app.start_metrics_server") as start_http_server:
+                start_http_server.return_value = (MagicMock(), MagicMock())
                 # Start collector (will run briefly)
                 task = asyncio.create_task(collector.start())
                 await asyncio.sleep(0.1)
                 task.cancel()
                 await task
 
-            start_http_server.assert_called_once_with(config.prometheus.port, addr="0.0.0.0")
+            start_http_server.assert_called_once_with(config.prometheus.port, collector.readiness.is_ready, addr="0.0.0.0")
             mock_client_class.assert_called_once()
             mock_client.connect_async.assert_called_once()
             mock_client.loop_start.assert_called_once()
@@ -200,7 +201,7 @@ class TestSYSMetricsCollectorAsync:
         collector = create_mock_collector(config)
 
         mock_client = MagicMock()
-        mock_reason_code = MagicMock()
+        mock_reason_code = 0
         mock_properties = MagicMock()
 
         # Verify the collector implementation directly in this focused unit test.
@@ -294,7 +295,7 @@ def test_flashmq_exact_subscriptions_and_no_mosquitto_fallback(thread_count):
         )
     )
     client = MagicMock()
-    collector._on_connect(client, None, None, MagicMock(), None)
+    collector._on_connect(client, None, None, 0, None)
     actual = {call.args[0] for call in client.subscribe.call_args_list}
     expected = {
         "$SYS/broker/clients/total",

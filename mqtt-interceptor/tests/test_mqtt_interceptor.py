@@ -293,13 +293,14 @@ class TestMQTTInterceptor:
 
             interceptor = MQTTInterceptor(config)
 
-            with patch("mqtt_interceptor.app.start_http_server") as start_http_server:
+            with patch("mqtt_interceptor.app.start_metrics_server") as start_http_server:
+                start_http_server.return_value = (MagicMock(), MagicMock())
                 await interceptor.start()
                 assert interceptor.running is True
                 mock_client.connect.assert_called_once()
                 mock_client.loop_start.assert_called_once()
 
-            start_http_server.assert_called_once_with(config.metrics.port)
+            start_http_server.assert_called_once_with(config.metrics.port, interceptor.readiness.is_ready)
             await interceptor.stop()
             assert interceptor.running is False
             mock_client.loop_stop.assert_called_once()
