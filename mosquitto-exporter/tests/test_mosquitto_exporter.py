@@ -262,3 +262,63 @@ async def test_configured_protocol_and_signal_shutdown(version, protocol):
         await asyncio.wait_for(task, timeout=1)
         client_class.return_value.disconnect.assert_called_once()
         client_class.return_value.loop_stop.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "value,expected", [("mosquitto", "mosquitto"), ("flashmq", "flashmq"), ("auto", None)]
+)
+def test_broker_profile_from_environment(monkeypatch, value, expected):
+    monkeypatch.setenv("METRICS_BROKER_TYPE", value)
+    if expected is None:
+        with pytest.raises(ValidationError):
+            MetricsConfig()
+    else:
+        assert MetricsConfig().broker_type == expected
+
+
+@pytest.mark.parametrize("value", ["0", "33", "invalid"])
+def test_flashmq_threads_are_bounded(monkeypatch, value):
+    monkeypatch.setenv("METRICS_FLASHMQ_THREADS", value)
+    with pytest.raises(ValidationError):
+        MetricsConfig()
+
+
+@pytest.mark.parametrize("thread_count", [1, 2, 32])
+def test_flashmq_exact_subscriptions_and_no_mosquitto_fallback(thread_count):
+    collector = create_mock_collector(
+        Config(
+            metrics=MetricsConfig(
+                broker_type="flashmq",
+                flashmq_threads=thread_count,
+            )
+        )
+    )
+    client = MagicMock()
+    collector._on_connect(client, None, None, MagicMock(), None)
+    actual = {call.args[0] for call in client.subscribe.call_args_list}
+    expected = {
+        "$SYS/broker/clients/total",
+        "$SYS/broker/load/messages/received/total",
+        "$SYS/broker/load/messages/sent/total",
+        "$SYS/broker/load/messages/received/persecond",
+        "$SYS/broker/load/messages/sent/persecond",
+        "$SYS/broker/subscriptions/count",
+        "$SYS/broker/retained messages/count",
+        "$SYS/broker/sessions/total",
+    } | {
+        f"$SYS/broker/threads/{thread}/drift/{suffix}"
+        for thread in range(thread_count)
+        for suffix in ("latest__ms", "moving_avg__ms")
+    }
+    assert actual == expected
+    assert client.subscribe.call_count == 8 + 2 * thread_count
+    assert all("#" not in topic and "+" not in topic for topic in actual)
+    for topic in (
+        "$SYS/broker/uptime",
+        "$SYS/broker/version",
+        "$SYS/broker/bytes/received",
+        f"$SYS/broker/threads/{thread_count}/drift/latest__ms",
+    ):
+        collector._parse_and_store(topic, "999")
+    assert collector.metrics_data == {}
+    assert collector.last_update == 0

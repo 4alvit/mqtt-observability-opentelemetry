@@ -62,6 +62,10 @@ if [[ -n "${2:-}" ]]; then
   [[ "$2" == mqtt-interceptor || "$2" == mosquitto-exporter ]] || exit 2
   components=("$2")
 fi
+if [[ "$mode" == test || "$mode" == all ]]; then
+  # Execute the exact checked-in readiness commands and MP deployment safeguards.
+  uv run --project mosquitto-exporter --locked python -m unittest discover -s tests/deployment -p 'test_*.py' -v
+fi
 if [[ "$mode" != integration ]]; then
   for component in "${components[@]}"; do
     uv sync --project "$component" --locked --extra dev

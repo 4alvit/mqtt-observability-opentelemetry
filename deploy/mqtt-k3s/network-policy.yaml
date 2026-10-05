@@ -1,0 +1,58 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mqtt-observability
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: mqtt-observability
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 9464
+    - protocol: TCP
+      port: 8889
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: mqtt-observability
+    ports:
+    - protocol: TCP
+      port: 4317
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 192.168.160.150/32
+    ports:
+    - protocol: TCP
+      port: 1883
+  - to:
+    - podSelector:
+        matchLabels:
+          app: tempo
+    - podSelector:
+        matchLabels:
+          app: mqtt-otel-collector
+    ports:
+    - protocol: TCP
+      port: 4317

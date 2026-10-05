@@ -54,6 +54,9 @@ class PrometheusConfig(BaseSettings):
 class MetricsConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="METRICS_", extra="ignore")
 
+    broker_type: Literal["mosquitto", "flashmq"] = "mosquitto"
+    flashmq_threads: int = Field(default=2, ge=1, le=32)
+
     enabled: bool = True
     prometheus_enabled: bool = True
     otel_enabled: bool = True

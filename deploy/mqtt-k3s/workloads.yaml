@@ -1,0 +1,329 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt-interceptor
+  namespace: observability
+  labels: &id001
+    app: mqtt-interceptor
+    app.kubernetes.io/part-of: mqtt-observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mqtt-interceptor
+  template:
+    metadata:
+      labels: *id001
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9464'
+        prometheus.io/path: /metrics
+        victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: mp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: mqtt-interceptor
+        image: 192.168.167.25:5050/mqtt-interceptor@sha256:53479a0aad7aa8e7d7b08945f57392db021a948587b98fa42e9c1747e70cb3cf
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - name: metrics
+          containerPort: 9464
+        env:
+        - name: MQTT_UPSTREAM_HOST
+          value: 192.168.160.150
+        - name: MQTT_UPSTREAM_PORT
+          value: '1883'
+        - name: MQTT_VERSION
+          value: '3'
+        - name: OTEL_ENDPOINT
+          value: http://mqtt-otel-collector.observability.svc.cluster.local:4317
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: '{"deployment.environment":"home","service.namespace":"mqtt-observability","broker.kind":"flashmq","broker.site":"cerbo"}'
+        - name: TRACE_TOPIC_PATTERNS
+          value: $SYS/broker/load/messages/received/total
+        - name: TRACE_SAMPLE_RATE
+          value: '1'
+        - name: MQTT_CLIENT_ID
+          value: observability-cerbo-heartbeat
+        - name: OTEL_SERVICE_NAME
+          value: cerbo-mqtt-observer
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - |
+              import math
+              import time
+              import urllib.request
+              from prometheus_client.parser import text_string_to_metric_families
+
+              with urllib.request.urlopen("http://127.0.0.1:9464/metrics", timeout=3) as response:
+                  text = response.read().decode()
+              values = [
+                  sample.value
+                  for family in text_string_to_metric_families(text)
+                  for sample in family.samples
+                  if sample.name == "mqtt_interceptor_last_message_timestamp_seconds"
+              ]
+              assert len(values) == 1, "Expected exactly one current broker sample"
+              value = values[0]
+              assert math.isfinite(value), "Non-finite broker sample"
+              age = time.time() - value
+              assert 0 <= age < 45, "Broker heartbeat is stale or in the future"
+          periodSeconds: 15
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9464
+          periodSeconds: 30
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /metrics
+            port: 9464
+          periodSeconds: 5
+          failureThreshold: 24
+          timeoutSeconds: 5
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-exporter
+  namespace: observability
+  labels: &id001
+    app: mosquitto-exporter
+    app.kubernetes.io/part-of: mqtt-observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mosquitto-exporter
+  template:
+    metadata:
+      labels: *id001
+      annotations:
+        victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: mp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: mosquitto-exporter
+        image: 192.168.167.25:5050/mosquitto-exporter@sha256:ef96d818c7a3099aa9bb99ca7108eb783502e01c98ecafd0dad1aa1ea1b58136
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - name: metrics
+          containerPort: 9494
+        env:
+        - name: MQTT_UPSTREAM_HOST
+          value: 192.168.160.150
+        - name: MQTT_UPSTREAM_PORT
+          value: '1883'
+        - name: MQTT_VERSION
+          value: '3'
+        - name: OTEL_ENDPOINT
+          value: http://mqtt-otel-collector.observability.svc.cluster.local:4317
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: '{"deployment.environment":"home","service.namespace":"mqtt-observability","broker.kind":"flashmq","broker.site":"cerbo"}'
+        - name: METRICS_BROKER_TYPE
+          value: flashmq
+        - name: METRICS_FLASHMQ_THREADS
+          value: '1'
+        - name: METRICS_STALE_THRESHOLD
+          value: '45'
+        - name: MQTT_CLIENT_ID
+          value: observability-cerbo-sys
+        - name: OTEL_SERVICE_NAME
+          value: cerbo-broker-exporter
+        - name: PROMETHEUS_ENABLED
+          value: 'true'
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - |
+              import math
+              import time
+              import urllib.request
+              from prometheus_client.parser import text_string_to_metric_families
+
+              with urllib.request.urlopen("http://127.0.0.1:9494/metrics", timeout=3) as response:
+                  text = response.read().decode()
+              values = [
+                  sample.value
+                  for family in text_string_to_metric_families(text)
+                  for sample in family.samples
+                  if sample.name == "flashmq_clients_connected"
+              ]
+              assert len(values) == 1, "Expected exactly one current broker sample"
+              value = values[0]
+              assert math.isfinite(value), "Non-finite broker sample"
+              assert value >= 0, "Invalid connected-client count"
+          periodSeconds: 15
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9494
+          periodSeconds: 30
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /metrics
+            port: 9494
+          periodSeconds: 5
+          failureThreshold: 24
+          timeoutSeconds: 5
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt-otel-collector
+  namespace: observability
+  labels: &id001
+    app: mqtt-otel-collector
+    app.kubernetes.io/part-of: mqtt-observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mqtt-otel-collector
+  template:
+    metadata:
+      labels: *id001
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8889'
+        prometheus.io/path: /metrics
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: mp
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: mqtt-otel-collector
+        image: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        ports:
+        - name: metrics
+          containerPort: 8889
+        - name: otlp
+          containerPort: 4317
+        - name: health
+          containerPort: 13133
+        env: []
+        args:
+        - --config=/etc/otelcol/config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/otelcol
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          periodSeconds: 30
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /
+            port: 13133
+          periodSeconds: 5
+          failureThreshold: 24
+          timeoutSeconds: 5
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: config
+        configMap:
+          name: mqtt-otel-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mqtt-otel-collector
+  namespace: observability
+  labels:
+    app: mqtt-otel-collector
+    app.kubernetes.io/part-of: mqtt-observability
+spec:
+  selector:
+    app: mqtt-otel-collector
+  ports:
+  - name: otlp
+    port: 4317
+    targetPort: otlp
+  - name: metrics
+    port: 8889
+    targetPort: metrics
