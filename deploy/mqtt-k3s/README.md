@@ -51,8 +51,20 @@ HTTP metrics alone are insufficient acceptance: check increasing broker counters
 in Prometheus, fresh drift samples and an actual `cerbo-mqtt-observer` span in
 Tempo. Check existing Venus MCP reads and its restart count before and after.
 
-The collector image is upstream 0.161.0: the newer 0.162.0 GitHub release did not
-have a retrievable stable container manifest when this overlay was prepared.
+The collector runs upstream 0.161.0 through the existing NAS registry because
+MP's direct Docker Hub pulls timed out during TLS negotiation. The cached Linux
+AMD64 image from upstream reference
+`otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1`
+was tagged and pushed without rebuilding. The mirror pin is
+`192.168.167.25:5050/mqtt-otel-collector@sha256:b5cf983651c32c3ca13f936deb51742015a54d121f388cac248923ddeb8cc9fc`.
+Source and mirror have the same image ID
+`sha256:0fd3483345a3fa17f3ffe760eea2413f640724c8204ea11a58c8e3927b2c0fe7`
+and all three RootFS layer hashes match. The repository manifest digest changes
+with this native mirror; the verified image contents and collector configuration
+are preserved. No TLS verification or firewall settings were changed.
+
+The newer 0.162.0 GitHub release did not have a retrievable stable container
+manifest when this overlay was prepared.
 `collector-runtime.yaml` is the standalone copy used for upstream collector
 `validate`; tests require it to equal the ConfigMap payload.
 
