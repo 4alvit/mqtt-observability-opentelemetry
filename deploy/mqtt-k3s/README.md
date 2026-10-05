@@ -16,9 +16,9 @@ change the MQTT broker, or redirect application traffic.
   batching and queues, no debug payload exporter, and no persistent storage.
 
 The observer and exporter images were built from source
-[`0e22c6e357a51cb58b394712f47bf15cd87c7c6b`](https://github.com/4alvit/mqtt-observability-opentelemetry/commit/0e22c6e357a51cb58b394712f47bf15cd87c7c6b).
-Their manifest pins are respectively `sha256:53479a0aad7aa8e7d7b08945f57392db021a948587b98fa42e9c1747e70cb3cf`
-and `sha256:ef96d818c7a3099aa9bb99ca7108eb783502e01c98ecafd0dad1aa1ea1b58136`.
+[`924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d`](https://github.com/4alvit/mqtt-observability-opentelemetry/commit/924197b2bfadd18d1cfe2d7d760ab4ad2e097f3d).
+Their manifest pins are respectively `sha256:591f237c711f1673f66f4cbe7fcd2a78e8e96b80ec8a163927b8304e77ef4b58`
+and `sha256:438a08943e741a50632dbf7948f2b6b3f982972c56bb9ed52dd73e77e6c40291`.
 All images are immutable digests. Each workload is fixed to one replica on MP,
 uses a read-only root, no privileges or service-account token, and has bounded
 CPU/memory. NetworkPolicy permits only DNS, the existing Cerbo MQTT endpoint,
