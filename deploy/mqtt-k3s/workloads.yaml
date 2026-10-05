@@ -23,6 +23,7 @@ spec:
         victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
     spec:
       automountServiceAccountToken: false
+      enableServiceLinks: false
       nodeSelector:
         kubernetes.io/hostname: mp
       securityContext:
@@ -59,8 +60,6 @@ spec:
           value: '3'
         - name: OTEL_ENDPOINT
           value: http://mqtt-otel-collector.observability.svc.cluster.local:4317
-        - name: OTEL_RESOURCE_ATTRIBUTES
-          value: '{"deployment.environment":"home","service.namespace":"mqtt-observability","broker.kind":"flashmq","broker.site":"cerbo"}'
         - name: TRACE_TOPIC_PATTERNS
           value: $SYS/broker/load/messages/received/total
         - name: TRACE_SAMPLE_RATE
@@ -106,7 +105,7 @@ spec:
             path: /metrics
             port: 9464
           periodSeconds: 5
-          failureThreshold: 24
+          failureThreshold: 36
           timeoutSeconds: 5
       terminationGracePeriodSeconds: 30
 ---
@@ -132,6 +131,7 @@ spec:
         victron.2560801.xyz/source-commit: 0e22c6e357a51cb58b394712f47bf15cd87c7c6b
     spec:
       automountServiceAccountToken: false
+      enableServiceLinks: false
       nodeSelector:
         kubernetes.io/hostname: mp
       securityContext:
@@ -168,8 +168,6 @@ spec:
           value: '3'
         - name: OTEL_ENDPOINT
           value: http://mqtt-otel-collector.observability.svc.cluster.local:4317
-        - name: OTEL_RESOURCE_ATTRIBUTES
-          value: '{"deployment.environment":"home","service.namespace":"mqtt-observability","broker.kind":"flashmq","broker.site":"cerbo"}'
         - name: METRICS_BROKER_TYPE
           value: flashmq
         - name: METRICS_FLASHMQ_THREADS
@@ -182,6 +180,8 @@ spec:
           value: cerbo-broker-exporter
         - name: PROMETHEUS_ENABLED
           value: 'true'
+        - name: PROMETHEUS_PORT
+          value: '9494'
         readinessProbe:
           exec:
             command:
@@ -218,7 +218,7 @@ spec:
             path: /metrics
             port: 9494
           periodSeconds: 5
-          failureThreshold: 24
+          failureThreshold: 36
           timeoutSeconds: 5
       terminationGracePeriodSeconds: 30
 ---
@@ -246,6 +246,7 @@ spec:
         prometheus.io/path: /metrics
     spec:
       automountServiceAccountToken: false
+      enableServiceLinks: false
       nodeSelector:
         kubernetes.io/hostname: mp
       securityContext:
@@ -301,7 +302,7 @@ spec:
             path: /
             port: 13133
           periodSeconds: 5
-          failureThreshold: 24
+          failureThreshold: 36
           timeoutSeconds: 5
       terminationGracePeriodSeconds: 30
       volumes:

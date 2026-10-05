@@ -25,6 +25,13 @@ CPU/memory. NetworkPolicy permits only DNS, the existing Cerbo MQTT endpoint,
 internal OTLP/Tempo traffic and Prometheus scrapes. There is no public ingress.
 MQTT/OTLP use the existing trusted private network; no Internet listener is added.
 
+Service links are disabled on all three pods: Kubernetes otherwise injects a
+`PROMETHEUS_PORT=tcp://...` value from the existing Prometheus Service, which the
+exporter's integer port setting rejects. The exporter also explicitly selects
+port 9494. Both readers retain their unique `OTEL_SERVICE_NAME`; the optional
+`OTEL_RESOURCE_ATTRIBUTES` override is omitted because its former JSON value
+conflicts with the standard SDK detector's comma-separated key/value format.
+
 ## Apply and acceptance
 
 Use the reviewed committed overlay only after all required checks pass:
@@ -43,6 +50,10 @@ observer readiness probe requires a heartbeat received within 45 seconds. Both
 probes parse exact Prometheus sample names with optional labels, reject missing
 or ambiguous series and non-finite values, and fail closed for invalid ages.
 All startup, readiness and liveness requests allow five seconds for scheduling.
+Startup allows 36 attempts at five-second intervals (180 seconds): the initial
+MP observer needed about 142 seconds to expose metrics during a loaded-node
+cold start, exceeding the former 120-second budget. Readiness and liveness
+thresholds, probe timeouts and the 45-second receipt freshness limit are unchanged.
 The collector expires cached Prometheus samples after 60 seconds without a new
 OTLP point; this is separate from the exporter's 45-second receipt limit. A point
 exported just before that limit can therefore remain visible in the collector

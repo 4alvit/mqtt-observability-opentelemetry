@@ -2,6 +2,7 @@
 
 import io
 import math
+import os
 import runpy
 import tempfile
 import unittest
@@ -9,10 +10,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
+from mosquitto_exporter.config import PrometheusConfig
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.resources import OTELResourceDetector
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 OVERLAY = ROOT / "deploy" / "mqtt-k3s"
@@ -142,6 +146,42 @@ class MQTTDeploymentTests(unittest.TestCase):
             with self.subTest(component=component), self.assertRaises(TimeoutError):
                 self.run_probe(component, TimeoutError())
 
+    def test_exporter_port_uses_explicit_integer_despite_service_name_collision(self):
+        container = self.deployments["mosquitto-exporter"]["spec"]["template"]["spec"][
+            "containers"
+        ][0]
+        env = {item["name"]: item["value"] for item in container["env"]}
+        with patch.dict(
+            os.environ, {"PROMETHEUS_PORT": "tcp://10.43.0.80:9090"}, clear=True
+        ):
+            with self.assertRaises(ValidationError):
+                PrometheusConfig()
+            # Explicit container env also protects the numeric port if a caller
+            # accidentally restores service links in a derived deployment.
+            with patch.dict(os.environ, env):
+                self.assertEqual(PrometheusConfig().port, 9494)
+                self.assertTrue(PrometheusConfig().enabled)
+
+    def test_reader_resource_env_is_accepted_by_the_standard_sdk_detector(self):
+        for name, service in (
+            ("mqtt-interceptor", "cerbo-mqtt-observer"),
+            ("mosquitto-exporter", "cerbo-broker-exporter"),
+        ):
+            container = self.deployments[name]["spec"]["template"]["spec"][
+                "containers"
+            ][0]
+            env = {item["name"]: item["value"] for item in container["env"]}
+            with self.subTest(component=name):
+                # JSON dictionaries are not valid in the standard OTel variable;
+                # these readers need only their explicit unique service names.
+                self.assertNotIn("OTEL_RESOURCE_ATTRIBUTES", env)
+                with (
+                    patch.dict(os.environ, env, clear=True),
+                    self.assertNoLogs("opentelemetry.sdk.resources", level="WARNING"),
+                ):
+                    resource = OTELResourceDetector().detect()
+                self.assertEqual(resource.attributes["service.name"], service)
+
     def test_workloads_are_singleton_restricted_mp_readers(self):
         self.assertEqual(
             set(self.deployments),
@@ -157,6 +197,7 @@ class MQTTDeploymentTests(unittest.TestCase):
                 pod = deployment["spec"]["template"]["spec"]
                 self.assertEqual(pod["nodeSelector"], {"kubernetes.io/hostname": "mp"})
                 self.assertIs(pod["automountServiceAccountToken"], False)
+                self.assertIs(pod["enableServiceLinks"], False)
                 for key in ("hostNetwork", "hostPID", "hostIPC"):
                     self.assertFalse(pod.get(key, False))
                 self.assertIs(pod["securityContext"]["runAsNonRoot"], True)
@@ -177,6 +218,8 @@ class MQTTDeploymentTests(unittest.TestCase):
                 self.assertRegex(container["image"], r"@sha256:[a-f0-9]{64}$")
                 for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
                     self.assertEqual(container[probe]["timeoutSeconds"], 5)
+                self.assertEqual(container["startupProbe"]["periodSeconds"], 5)
+                self.assertEqual(container["startupProbe"]["failureThreshold"], 36)
                 for budget in ("requests", "limits"):
                     self.assertEqual(
                         set(container["resources"][budget]), {"cpu", "memory"}
