@@ -12,62 +12,60 @@ jobs:
       security-events: write
   deploy:
     name: Apply observability to k3s
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((vars.CI_RUNNER_MODE == 'self-hosted' || vars.CI_RUNNER_MODE == 'k3s') && ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) && (vars.CI_RUNNER_LABELS || '[]') || '["ubuntu-latest"]') }}
     steps:
-    - name: Require reviewed configuration SHA
-      env:
-        SOURCE_SHA: ${{ inputs.source_sha }}
-      run: |
-        python3 - <<'PYREF'
-        import os,re
-        if not re.fullmatch('[0-9a-f]{40}',os.environ['SOURCE_SHA']) or os.environ['SOURCE_SHA'] != os.environ['GITHUB_SHA']:
-            raise SystemExit('Configuration deployment must use the reviewed default-branch SHA of this run')
-        PYREF
-    - name: Require protected production environment
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: 'gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq ''.protection_rules | any(.type == "required_reviewers"
-        and (.reviewers | length > 0))'' | python3 -c ''import sys; assert sys.stdin.read().strip() == "true", "Configure
-        production required reviewers before deployment"'' '
-    - name: Harden runner
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-      with:
-        egress-policy: audit
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
-      with:
-        version: v1.31.4
-    - name: Write kubeconfig
-      env:
-        KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
-      run: |
-        mkdir -p "$HOME/.kube"
-        if printf '%s' "$KUBECONFIG_B64" | head -c 20 | grep -q 'apiVersion'; then
-          printf '%s\n' "$KUBECONFIG_B64" > "$HOME/.kube/config"
-        else
-          printf '%s' "$KUBECONFIG_B64" | base64 --decode > "$HOME/.kube/config"
-        fi
-        chmod 600 "$HOME/.kube/config"
-        unset KUBECONFIG_B64
-    - name: Ensure namespace + grafana secret
-      env:
-        GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-      run: |
-        set -euo pipefail
-        kubectl get ns observability >/dev/null 2>&1 || kubectl create namespace observability
-        kubectl -n observability create secret generic grafana-admin \
-          --from-literal=admin-user=admin \
-          --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
-          --dry-run=client -o yaml | kubectl apply -f -
-        echo "Secret keys present:"
-        kubectl -n observability get secret grafana-admin -o jsonpath='{.data}' \
-          | python3 -c "import sys,json; print(' '.join(json.load(sys.stdin).keys()))"
-    - name: Apply + rollout
-      run: bash deploy/k3s/deploy.sh --apply
-      env:
-        SOURCE_SHA: ${{ inputs.source_sha }}
+      - name: Require reviewed configuration SHA
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 - <<'PYREF'
+          import os,re
+          if not re.fullmatch('[0-9a-f]{40}',os.environ['SOURCE_SHA']) or os.environ['SOURCE_SHA'] != os.environ['GITHUB_SHA']:
+              raise SystemExit('Configuration deployment must use the reviewed default-branch SHA of this run')
+          PYREF
+      - name: Require protected production environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: 'gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq ''.protection_rules | any(.type == "required_reviewers" and (.reviewers | length > 0))'' | python3 -c ''import sys; assert sys.stdin.read().strip() == "true", "Configure production required reviewers before deployment"'' '
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+        with:
+          version: v1.31.4
+      - name: Write kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          if printf '%s' "$KUBECONFIG_B64" | head -c 20 | grep -q 'apiVersion'; then
+            printf '%s\n' "$KUBECONFIG_B64" > "$HOME/.kube/config"
+          else
+            printf '%s' "$KUBECONFIG_B64" | base64 --decode > "$HOME/.kube/config"
+          fi
+          chmod 600 "$HOME/.kube/config"
+          unset KUBECONFIG_B64
+      - name: Ensure namespace + grafana secret
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          kubectl get ns observability >/dev/null 2>&1 || kubectl create namespace observability
+          kubectl -n observability create secret generic grafana-admin \
+            --from-literal=admin-user=admin \
+            --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "Secret keys present:"
+          kubectl -n observability get secret grafana-admin -o jsonpath='{.data}' \
+            | python3 -c "import sys,json; print(' '.join(json.load(sys.stdin).keys()))"
+      - name: Apply + rollout
+        run: bash deploy/k3s/deploy.sh --apply
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
     environment: production
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     needs: checks
