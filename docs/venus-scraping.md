@@ -23,5 +23,8 @@ Verify from the running Prometheus:
   are at least two samples.
 - Synology Grafana evaluates all four Venus rules without query errors.
 
-The notification policy and its safe deployment script live in
-`4alvit/terraform-portainer-synology/deployments/inverter-monitoring/runtime/`.
+The notification policy and deployment procedure belong to the operator's
+monitoring configuration. Preserve that configuration separately from scrape
+changes and verify alert delivery after updating it. See the public
+[inverter-monitoring project](https://github.com/victron-venus/inverter-monitoring)
+for the monitoring stack and its own setup instructions.
