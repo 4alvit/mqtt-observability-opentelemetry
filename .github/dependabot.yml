@@ -23,3 +23,13 @@ updates:
     open-pull-requests-limit: 0
     ignore:
       - dependency-name: '*'
+
+  - package-ecosystem: uv
+    directory: /mosquitto-exporter
+    schedule:
+      interval: daily
+
+  - package-ecosystem: uv
+    directory: /mqtt-interceptor
+    schedule:
+      interval: daily
