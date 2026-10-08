@@ -43,4 +43,3 @@ The interceptor/exporter configuration and message formats are unchanged by this
 ### Security
 
 No application vulnerability is claimed fixed by this documentation update. Release publication now validates the source changelog and rejects missing upgrade/security guidance before tagging.
-
