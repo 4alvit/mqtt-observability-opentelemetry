@@ -110,3 +110,10 @@ MIT License - see [LICENSE](LICENSE)
 ### Reviewed infrastructure deployment
 
 The k3s observability stack uses third-party pinned images and configuration from this repository; it is separate from the MQTT component image releases. Deploy it with the manual `Deploy k3s` workflow and the exact default-branch `source_sha`, after the CI gate and production-environment approval. Locally, `SOURCE_SHA=<full SHA> bash deploy/k3s/deploy.sh --render` renders without applying; add `--apply` only for the reviewed committed configuration. Failed rollouts now fail the command.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development, bug reports and proposals,
+[SECURITY.md](SECURITY.md) for confidential vulnerability reports and deployment
+boundaries, and the [OpenSSF evidence index](docs/openssf-evidence.md) for assessment
+scope and verification.

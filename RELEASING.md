@@ -74,9 +74,12 @@ The maintainer requesting the RC owns its release notes and acceptance evidence.
 Before requesting stable, the maintainer must:
 
 - Review the changes, compatibility impact, known issues and upgrade/recovery
-  instructions. Update the existing changelog when present; otherwise include a
-  human-readable summary in the release preparation PR. The categories in
-  [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) are a useful format.
+  instructions. Commit the release notes in `CHANGELOG.md` at the package source
+  revision, with one `## [X.Y.Z]` section matching the release version and nonempty
+  `### Upgrade` and `### Security` guidance. Release preparation fails if those
+  source notes are absent or ambiguous; a PR description cannot substitute.
+  The categories in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+  are a useful format.
 - Test the exact RC assets on the intended targets, including applicable hardware,
   operating systems, integrations and configuration/data migrations. Record the
   tested RC tag, source SHA, results and limitations in the PR or linked issue.
@@ -85,6 +88,12 @@ Before requesting stable, the maintainer must:
 - Request the exact RC's stable promotion and approve the pending release job.
   Publish user-facing notes alongside the generated provenance without replacing
   any payload or manifest.
+
+Release headings use ATX syntax (leading `#` characters). A heading at the
+same or a higher level ends its section. Setext (underlined) headings inside
+the selected release are rejected; fenced examples and HTML comments cannot
+supply the required guidance. Blank-separated thematic breaks remain allowed.
+Validation preserves the original source text in the published release body.
 
 The current application adapter uses the `release` environment's required reviewer
 on public repositories, where that capability is available without a paid private
@@ -139,3 +148,8 @@ Changes to the lifecycle, required gates or version/asset mappings go through PR
 review together with the corresponding workflow changes. Update the toolkit
 template and `.release-policy.json`, then regenerate and review this document and
 the runbook. The README links here rather than duplicating the release procedure.
+
+Upgrade and Security sections need visible instructions or an explicit statement
+that no changes are required. Comments, separator rules and subsection headings
+alone do not satisfy this requirement; instructions may use paragraphs, lists or
+code examples.
