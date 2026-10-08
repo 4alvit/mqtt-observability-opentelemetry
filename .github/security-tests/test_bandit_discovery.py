@@ -9,7 +9,14 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED = (".git", ".venv", ".venv-ci", "tests")
+EXCLUDED = (
+    ".git",
+    ".venv",
+    ".venv-ci",
+    "tests",
+    "mqtt-interceptor/.venv",
+    "mosquitto-exporter/.venv",
+)
 EXCLUDED_FILES = ("scripts/release.py", "scripts/release_control.py")
 SOURCES = (
     "app.py",
@@ -20,6 +27,10 @@ SOURCES = (
     "dist_helpers.py",
     "release-dist-helper.py",
     "scripts/release_helper.py",
+    "mqtt-interceptor/src/probe.py",
+    "mqtt-interceptor/.venv_helpers.py",
+    "mosquitto-exporter/src/probe.py",
+    "mosquitto-exporter/.venv_helpers.py",
 )
 
 
@@ -53,7 +64,7 @@ class BanditDiscoveryTests(unittest.TestCase):
                         "gitdir: /fixture/worktrees/example\n"
                     )
                     continue
-                (root / directory).mkdir()
+                (root / directory).mkdir(parents=True)
                 (root / directory / "dependency.py").write_text("VALUE = 1\n")
             for name in (*SOURCES, *EXCLUDED_FILES):
                 file = root / name
