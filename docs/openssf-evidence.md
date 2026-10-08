@@ -40,3 +40,14 @@ Follow `RELEASING.md` and `docs/release-versioning.md`. Document component/image
 Before submitting or updating the questionnaire, verify the actual project-specific record: responses to bug and enhancement reports, vulnerability reports in every supported channel, release-note history, unresolved scanner findings, dependency status and required review settings. The primary maintainer must personally confirm knowledge of secure design and common implementation vulnerabilities. A confirmation about another repository does not establish these answers here.
 
 Assess transport encryption, credential storage and privilege limits against the implementation and deployment documented in [SECURITY.md](../SECURITY.md). Do not mark a requirement satisfied solely because a policy says it should be. Record justified non-applicability only where the actual architecture supports it. No paid certification, blanket compliance guarantee or third-party audit is claimed.
+
+
+### Release-note structure
+
+Source release notes use ATX headings: `## [version]`, `### Upgrade`, and
+`### Security`. A heading at the same or a higher level ends its section.
+Setext (underlined) headings within the selected release are rejected because
+this deliberately limited parser does not implement all CommonMark structure.
+Fenced examples and HTML comments cannot supply the required guidance; normal
+blank-separated thematic breaks remain supported. The published release body
+preserves the original source text after validation.
