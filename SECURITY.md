@@ -40,3 +40,41 @@ a trusted isolated network. A local plaintext MQTT/HTTP option is not encrypted
 by these TLS defaults. Operators must separately verify remote certificates or
 SSH host-key fingerprints and replace obsolete endpoint keys. The source and
 release downloads are served through GitHub HTTPS.
+
+## Verifying key-length policy in the deployed environment
+
+The exporter delegates MQTT TLS to Paho when `tls_enabled` is true. `recovery/backup.py` uses `ssl.create_default_context` and the service-account CA for Kubernetes HTTPS. The MQTT interceptor and other plaintext local listeners require a separately secured deployment boundary.
+
+The verified Python profile is CPython 3.12.14 with OpenSSL 3.5.8 and
+SSL security level 2. At this level OpenSSL rejects RSA/DH keys shorter than
+2048 bits and elliptic-curve keys shorter than 224 bits. It applies the check
+to certificate-chain keys as well as negotiated parameters. Use current
+supported runtime builds which preserve this policy; do not lower the security
+level or turn off certificate/hostname verification to accept an old endpoint.
+Check the interpreter which actually runs the application:
+
+```sh
+python - <<'PYTHON'
+import ssl
+import sys
+context = ssl.create_default_context()
+print(sys.version)
+print(ssl.OPENSSL_VERSION)
+print(context.security_level, context.minimum_version.name)
+if context.security_level < 2 or context.minimum_version < ssl.TLSVersion.TLSv1_2:
+    raise SystemExit("Unsupported TLS policy: upgrade the runtime; do not weaken verification")
+PYTHON
+```
+
+On 2026-10-08, isolated local handshakes using the project's installed Python
+client libraries rejected a trusted RSA-1024 server certificate and accepted
+RSA-2048 and ECDSA P-256 certificates. This is evidence for that tested runtime,
+not a claim about every operating-system TLS build or custom client configuration.
+
+Release helpers also invoke `gh`, which has a separate TLS implementation.
+Follow [the release helper profile](docs/RELEASE_TLS_PROFILE.md) for the tested
+GitHub CLI/Go versions and the command-local option that completely disables
+smaller certificate keys. That option does not change system-wide settings.
+
+References: [OpenSSL security levels](https://docs.openssl.org/3.5/man3/SSL_CTX_set_security_level/)
+and [Python SSL contexts](https://docs.python.org/3.12/library/ssl.html#ssl.SSLContext).
