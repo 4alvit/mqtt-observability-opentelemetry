@@ -148,3 +148,8 @@ Changes to the lifecycle, required gates or version/asset mappings go through PR
 review together with the corresponding workflow changes. Update the toolkit
 template and `.release-policy.json`, then regenerate and review this document and
 the runbook. The README links here rather than duplicating the release procedure.
+
+Upgrade and Security sections need visible instructions or an explicit statement
+that no changes are required. Comments, separator rules and subsection headings
+alone do not satisfy this requirement; instructions may use paragraphs, lists or
+code examples.
