@@ -4,7 +4,8 @@
     "mqtt-interceptor/uv.lock",
     "mosquitto-exporter/src",
     "mosquitto-exporter/uv.lock",
-    "docker/test-publisher/requirements.lock"
+    "docker/test-publisher/requirements.lock",
+    "recovery/runtime/requirements.lock"
   ],
   "containers": {
     "mqtt-interceptor-container.oci.tar": {
@@ -18,6 +19,11 @@
     "test-publisher-container.oci.tar": {
       "context": "docker/test-publisher",
       "dockerfile": "docker/test-publisher/Dockerfile"
+    },
+    "recovery-runtime-container.oci.tar": {
+      "context": "recovery/runtime",
+      "dockerfile": "recovery/runtime/Dockerfile",
+      "platforms": "linux/amd64,linux/arm64"
     }
   }
 }

@@ -56,7 +56,7 @@ fi
 # Recovery checks have no cluster, SSH, Docker or credential dependency.
 python3 -m unittest discover -s tests/recovery -p 'test_*.py' -v
 mode="${1:-all}"
-[[ "$mode" =~ ^(all|lint|test|integration)$ ]] || { echo 'Usage: ci.sh [lint|test|integration|security] [component]' >&2; exit 2; }
+[[ "$mode" =~ ^(all|lint|test|tls|integration)$ ]] || { echo 'Usage: ci.sh [lint|test|tls|integration|security] [component]' >&2; exit 2; }
 components=(mqtt-interceptor mosquitto-exporter)
 if [[ -n "${2:-}" ]]; then
   [[ "$2" == mqtt-interceptor || "$2" == mosquitto-exporter ]] || exit 2
@@ -66,7 +66,12 @@ if [[ "$mode" == test || "$mode" == all ]]; then
   # Execute the exact checked-in readiness commands and MP deployment safeguards.
   PYTHONPATH="$PWD/mosquitto-exporter/src" uv run --project mosquitto-exporter --locked python -m unittest discover -s tests/deployment -p 'test_*.py' -v
 fi
-if [[ "$mode" != integration ]]; then
+if [[ "$mode" == tls || "$mode" == all ]]; then
+  PYTHONPATH="$PWD/mqtt-interceptor/src:$PWD/mosquitto-exporter/src" \
+    uv run --project mosquitto-exporter --locked --extra dev python -m pytest \
+      -c mosquitto-exporter/pyproject.toml tests/tls -v
+fi
+if [[ "$mode" != integration && "$mode" != tls ]]; then
   for component in "${components[@]}"; do
     uv sync --project "$component" --locked --extra dev
     if [[ "$mode" != test ]]; then

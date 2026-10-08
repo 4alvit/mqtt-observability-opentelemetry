@@ -13,6 +13,10 @@
 
 A complete observability stack for MQTT-based IoT systems.
 
+For a TLS-protected collector, follow the explicit
+[OTLP HTTP/protobuf migration and certificate policy](docs/otlp-transport.md).
+The local plaintext gRPC demo remains available.
+
 <!-- ci-release-process:start -->
 ## Release process
 
