@@ -122,7 +122,7 @@
         "value": "package"
       }
     ],
-    "toolkit_revision": "fca833a9da6b49116444ffd7ac6739e08f9cbc61"
+    "toolkit_revision": "6f3bac867a101441e029ee7c20c5aa92541eb308"
   },
   "single_entry_ci": true,
   "release_notes": "CHANGELOG.md"
