@@ -17,7 +17,10 @@ dependencies = [
     "paho-mqtt>=2.0.0",
     "opentelemetry-api>=1.21.0",
     "opentelemetry-sdk>=1.21.0",
-    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-exporter-otlp==1.44.0",
+    "requests==2.34.2",
+    "urllib3==2.8.0",
+    "cryptography==50.0.2",
     "pyyaml>=6.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.14.2",
@@ -31,6 +34,7 @@ Repository = "https://github.com/4alvit/mqtt-observability-opentelemetry"
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
+    "types-requests>=2.32.0",
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.1.0",

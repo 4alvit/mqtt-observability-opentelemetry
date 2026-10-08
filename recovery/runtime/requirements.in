@@ -1,0 +1,2 @@
+# Native certificate-key inspection for the Linux recovery runtime.
+cryptography==50.0.2
