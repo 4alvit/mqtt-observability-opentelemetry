@@ -21,7 +21,8 @@
   "container_assets": {
     "mqtt-interceptor-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/mqtt-interceptor",
     "mosquitto-exporter-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/mosquitto-exporter",
-    "test-publisher-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/test-publisher"
+    "test-publisher-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/test-publisher",
+    "recovery-runtime-container.oci.tar": "ghcr.io/4alvit/mqtt-observability-opentelemetry/recovery-runtime"
   },
   "visibility": "public",
   "version_companions": [
@@ -113,6 +114,16 @@
       },
       {
         "path": "test-publisher-container.oci.tar",
+        "format": "oci",
+        "field": [
+          "config",
+          "Labels",
+          "org.opencontainers.image.version"
+        ],
+        "value": "package"
+      },
+      {
+        "path": "recovery-runtime-container.oci.tar",
         "format": "oci",
         "field": [
           "config",

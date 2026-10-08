@@ -12,7 +12,6 @@ from typing import Any
 import paho.mqtt.client as mqtt
 import structlog
 from opentelemetry import metrics
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
@@ -21,6 +20,7 @@ from opentelemetry.sdk.resources import Resource
 
 from mosquitto_exporter._version import __version__
 from mosquitto_exporter.config import Config, load_config
+from mosquitto_exporter.otlp import create_exporter
 from mosquitto_exporter.readiness import BrokerReadiness, start_metrics_server
 
 logger = structlog.get_logger()
@@ -360,7 +360,7 @@ class SYSMetricsCollector:
             readers.append(prometheus_reader)
 
         if self.config.otel.endpoint:
-            otlp_exporter = OTLPMetricExporter(
+            otlp_exporter = create_exporter(
                 endpoint=self.config.otel.endpoint,
                 insecure=self.config.otel.insecure,
                 timeout=self.config.otel.timeout,

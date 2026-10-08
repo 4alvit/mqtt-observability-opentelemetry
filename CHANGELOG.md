@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+Trace and metric HTTPS exporters verify exact certificate-key minima on the
+same connection before sending credentials or telemetry, including proxy chains
+and configured client certificates. TLS gRPC configurations must migrate to
+explicit HTTP/protobuf; local plaintext gRPC remains unchanged. See the
+[migration guide](docs/otlp-transport.md). A hash-locked recovery runtime image is
+prepared for a later published-digest deployment; the current Kubernetes
+recovery transport is not changed or claimed fixed here.
+
 ## [0.2.3]
 
 ### Changed
@@ -13,4 +25,3 @@ The interceptor/exporter configuration and message formats are unchanged by this
 ### Security
 
 No application vulnerability is claimed fixed by this documentation update. Release publication now validates the source changelog and rejects missing upgrade/security guidance before tagging.
-

@@ -7,14 +7,14 @@ from typing import Any
 import paho.mqtt.client as mqtt
 import structlog
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SpanExporter
 from opentelemetry.trace import SpanKind, TraceFlags, TraceState
 from prometheus_client import Counter, Gauge, Histogram
 
 from mqtt_interceptor.config import Config, load_config
+from mqtt_interceptor.otlp import create_exporter
 from mqtt_interceptor.readiness import BrokerReadiness, start_metrics_server
 
 logger = structlog.get_logger()
@@ -214,9 +214,9 @@ class MQTTInterceptor:
         )
         provider = TracerProvider(resource=resource)
 
-        exporter: OTLPSpanExporter | ConsoleSpanExporter
+        exporter: SpanExporter
         if self.config.otel.endpoint:
-            exporter = OTLPSpanExporter(
+            exporter = create_exporter(
                 endpoint=self.config.otel.endpoint,
                 insecure=self.config.otel.insecure,
                 timeout=self.config.otel.timeout,

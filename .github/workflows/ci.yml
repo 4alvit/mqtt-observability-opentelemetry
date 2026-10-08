@@ -103,5 +103,55 @@ jobs:
         run: kubectl kustomize deploy/k3s > "$RUNNER_TEMP/monitoring.yaml"
       - name: Check non-root startup, writable data volumes and dashboard provisioning
         run: uv run --project mqtt-interceptor --locked python scripts/kubernetes_smoke.py
+  otlp-tls:
+    name: OTLP TLS (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.14']
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: 0.12.18
+      - name: Verify both real exporters and their TLS policies
+        env:
+          PYTHONPATH: mqtt-interceptor/src:mosquitto-exporter/src
+          UV_PYTHON: ${{ matrix.python }}
+        run: bash scripts/ci.sh tls
+  recovery-runtime:
+    name: Recovery runtime (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build and probe the exact recovery runtime
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker buildx build --platform "linux/$ARCH" --load -t recovery-runtime:test recovery/runtime
+          docker run --rm --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python -m pip check
+          docker run --rm -i --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python - < tests/tls/recovery_runtime_probe.py
 'on':
   workflow_call: {}
