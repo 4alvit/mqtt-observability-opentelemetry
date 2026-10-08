@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: 0.12.7
+          version: 0.12.18
       - name: Verify Bandit directory discovery
         run: uvx --python 3.12 --from bandit==1.8.6 python -m unittest discover -s .github/security-tests -p test_bandit_discovery.py -v
       - run: bash scripts/ci.sh bandit

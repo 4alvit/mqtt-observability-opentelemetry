@@ -27,7 +27,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
-          version: 0.12.7
+          version: 0.12.18
       - name: Run the local component contract
         env:
           COMPONENT: ${{ matrix.component }}
@@ -55,7 +55,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
-          version: 0.12.7
+          version: 0.12.18
       - name: Run the local component contract
         env:
           COMPONENT: ${{ matrix.component }}
@@ -78,7 +78,7 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: 0.12.7
+          version: 0.12.18
       - name: Run isolated Compose smoke with readiness and trace assertions
         run: bash scripts/ci.sh integration
     timeout-minutes: 20
@@ -98,7 +98,7 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: 0.12.7
+          version: 0.12.18
       - name: Check rendered Kubernetes configuration
         run: kubectl kustomize deploy/k3s > "$RUNNER_TEMP/monitoring.yaml"
       - name: Check non-root startup, writable data volumes and dashboard provisioning
