@@ -39,3 +39,10 @@ Follow `RELEASING.md` and `docs/release-versioning.md`. Document component/image
 - [`RELEASING.md`](RELEASING.md)
 
 See the [OpenSSF evidence index](docs/openssf-evidence.md) for the current assessment scope and outstanding verification.
+
+Release changes must update `CHANGELOG.md` under a unique `## [X.Y.Z]`
+base-version heading, including nonempty `### Upgrade` and `### Security`
+sections. The release controller reads that file from the exact packaged source
+commit, validates its Git blob, and retains build provenance in the public notes.
+Run `python3 -m unittest discover -s .github/release-tests -p "test_*.py"`
+after changing release tooling.
