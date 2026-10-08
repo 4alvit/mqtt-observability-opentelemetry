@@ -1,6 +1,7 @@
 """Check the built recovery image's runtime; this does not exercise Kubernetes."""
 
 import json
+import os
 import platform
 import ssl
 import sys
@@ -11,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 
 def main() -> None:
+    assert os.getuid() == os.getgid() == 65532
     assert sys.version_info[:2] == (3, 14)
     assert cryptography.__version__ == "50.0.2"
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -41,6 +43,8 @@ def main() -> None:
             {
                 "python": platform.python_version(),
                 "machine": platform.machine(),
+                "uid": os.getuid(),
+                "gid": os.getgid(),
                 "cryptography": cryptography.__version__,
                 "openssl": ssl.OPENSSL_VERSION,
                 "decoded_key_bits": observed,

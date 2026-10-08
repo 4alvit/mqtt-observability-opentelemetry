@@ -151,7 +151,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           docker buildx build --platform "linux/$ARCH" --load -t recovery-runtime:test recovery/runtime
-          docker run --rm --platform "linux/$ARCH" recovery-runtime:test python -m pip check
-          docker run --rm -i --platform "linux/$ARCH" recovery-runtime:test python - < tests/tls/recovery_runtime_probe.py
+          docker run --rm --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python -m pip check
+          docker run --rm -i --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python - < tests/tls/recovery_runtime_probe.py
 'on':
   workflow_call: {}

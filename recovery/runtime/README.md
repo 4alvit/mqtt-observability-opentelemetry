@@ -3,7 +3,11 @@
 This image adds a hash-locked cryptography runtime to the exact Python base
 already used by the recovery CronJob. It is built and probed on Linux amd64 and
 arm64. It contains no Kubernetes credentials, deployment manifests or backup
-payloads. The current CronJob and `recovery/backup.py` remain unchanged.
+payloads. Its default user and group are unprivileged numeric ID 65532. The
+current CronJob explicitly overrides both IDs to 0 for its existing read-only
+source-volume access with `DAC_READ_SEARCH`; that deployment setting and
+`recovery/backup.py` remain unchanged. Selecting an image does not silently
+change the CronJob's volume-access contract.
 
 The normal release asset builder produces `recovery-runtime-container.oci.tar`
 with its version label, checksum and source-policy binding. The existing
@@ -28,4 +32,6 @@ uv pip compile --python-version 3.14 --python-platform linux \
 
 The Dockerfile requires wheels and hashes, runs `pip check`, and does not upgrade
 unrelated tooling. `tests/tls/recovery_runtime_probe.py` checks the real image's
-Python/cryptography versions, verified-chain API and exact RSA/EC key decoding.
+Python/cryptography versions, default UID/GID, verified-chain API and exact
+RSA/EC key decoding. CI runs those probes with no network and a read-only
+container filesystem.

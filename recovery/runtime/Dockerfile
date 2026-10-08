@@ -6,3 +6,4 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: --require-hashes \
     && python -m pip check \
     && rm /tmp/recovery-requirements.lock
 ENV PYTHONDONTWRITEBYTECODE=1
+USER 65532:65532
