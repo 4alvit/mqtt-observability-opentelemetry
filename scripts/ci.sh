@@ -6,7 +6,7 @@ run_bandit() (
   report=$(mktemp)
   trap 'rm -f "$report"' EXIT
   if uvx --python 3.12 --from bandit==1.8.6 bandit -r . -lll \
-      -x .git,.venv,.venv-ci,tests,scripts/release.py,scripts/release_control.py \
+      -x ./.git/,./.venv/,./.venv-ci/,./tests/,./scripts/release.py,./scripts/release_control.py \
       --format json --output "$report"; then
     scanner_status=0
   else
