@@ -16,7 +16,8 @@ import io
 import json
 import os
 import plistlib
-import subprocess
+# Subprocess calls below use argument vectors with shell=False.
+import subprocess  # nosec B404
 import sys
 import tarfile
 import tempfile
@@ -91,18 +92,20 @@ class PlanTest(unittest.TestCase):
         )
 
     def test_malformed_identity_fails_closed(self):
+        configuration = policy()
+        uppercase_sha = SHA.upper()
         for base in ("v1.2.3", "1.02.3", "1.2", "1.2.3-beta.1", "1.2.3\n", "1.2.٣"):
             with self.subTest(base=base), self.assertRaises(ValueError):
-                version.create_plan(base, "beta", 1, SHA, policy())
+                version.create_plan(base, "beta", 1, SHA, configuration)
         for sequence in (True, 0, -1, "1", None):
             with self.subTest(sequence=sequence), self.assertRaises(ValueError):
-                version.create_plan("1.2.3", "rc", sequence, SHA, policy())
+                version.create_plan("1.2.3", "rc", sequence, SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "stable", 1, SHA, policy())
+            version.create_plan("1.2.3", "stable", 1, SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "nightly", "20260230235959.1.1", SHA, policy())
+            version.create_plan("1.2.3", "nightly", "20260230235959.1.1", SHA, configuration)
         with self.assertRaises(ValueError):
-            version.create_plan("1.2.3", "beta", 1, SHA.upper(), policy())
+            version.create_plan("1.2.3", "beta", 1, uppercase_sha, configuration)
 
     def test_real_nightly_run_fits_uv_numeric_limit(self):
         plan = version.create_plan(
@@ -280,6 +283,7 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
         self.assertFalse(list(self.root.glob(".version-sync-*")))
 
     def test_json_missing_duplicate_and_wrong_owner_rejected(self):
+        files = policy()["versioning"]["files"]
         for raw in (
             '{"name":"product"}',
             '{"name":"other","version":"2.5.42"}',
@@ -287,7 +291,7 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
         ):
             path = self.write("package.json", raw)
             with self.subTest(raw=raw), self.assertRaises(ValueError):
-                self.sync(policy()["versioning"]["files"])
+                self.sync(files)
             self.assertEqual(path.read_text(), raw)
 
     def test_npm_lock_changes_only_root_owned_entries(self):
@@ -382,6 +386,20 @@ class AdapterTest(unittest.TestCase):  # pylint: disable=too-many-public-methods
         self.assertIn(
             'release.version = "2.5.42-beta.2"', (self.root / "config.toml").read_text()
         )
+
+    def test_toml_long_whitespace_and_header_comment_preserve_layout(self):
+        padding = " " * 4000
+        before = (
+            padding + "\n"
+            + padding + "[project]" + padding + "# [brackets] in comment\n"
+            + 'name = "product"\n'
+            + "version" + padding + "=" + padding + '"2.5.42" # retained\n'
+        )
+        path = self.write("pyproject.toml", before)
+        self.sync(
+            [{"path": "pyproject.toml", "format": "toml", "field": "project.version"}]
+        )
+        self.assertEqual(path.read_text(), before.replace('"2.5.42"', '"2.5.42-beta.2"'))
 
     def test_toml_continued_arrays_inline_tables_and_strings_are_not_assignments(self):
         before = (
@@ -563,7 +581,8 @@ version = "2.5.42"
         (self.root / "linked").symlink_to(self.root, target_is_directory=True)
         for name in (
             "../escape",
-            "/tmp/escape",
+            # Malicious absolute-path fixture verifies rejection; no file is created.
+            "/tmp/escape",  # nosec B108
             "sub/../original.json",
             "alias.json",
             "linked/original.json",
@@ -630,7 +649,8 @@ version = "2.5.42"
             "--plan",
             ".release-plan.json",
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        # Isolated test fixture; explicit argv, never shell interpolation.
+        subprocess.run(command, check=True, capture_output=True)  # nosec B603
         receipt = self.root / ".release-inputs.json"
         before = receipt.read_bytes()
         actual = json.loads(before)
@@ -641,7 +661,8 @@ version = "2.5.42"
             actual["effective_inputs_sha256"],
             version.effective_inputs_digest(actual["files"]),
         )
-        subprocess.run(command + ["--check"], check=True, capture_output=True)
+        # Isolated test fixture; explicit argv, never shell interpolation.
+        subprocess.run(command + ["--check"], check=True, capture_output=True)  # nosec B603
         self.assertEqual(receipt.read_bytes(), before)
 
     def test_git_source_binding_rejects_unrelated_input_changes(self):
@@ -650,7 +671,8 @@ version = "2.5.42"
         )
 
         def git(*args):
-            return subprocess.check_output(
+            # Test harness intentionally uses its fixture-controlled PATH.
+            return subprocess.check_output(  # nosec B603, B607
                 ["git", "-C", str(self.root), *args],
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -691,7 +713,8 @@ version = "2.5.42"
         self.write("VERSION", "2.5.42\n")
 
         def git(*args):
-            return subprocess.check_output(
+            # Test harness intentionally uses its fixture-controlled PATH.
+            return subprocess.check_output(  # nosec B603, B607
                 ["git", "-C", str(self.root), *args],
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -934,8 +957,9 @@ class ArtifactTest(unittest.TestCase):
 
     def test_oci_missing_or_wrong_label_on_any_platform_fails(self):
         for label in (None, "2.5.42", "2.5.41-beta.2"):
+            entries = self.oci_entries(("2.5.42-beta.2", label), nested=True)
             with self.subTest(label=label), self.assertRaises(ValueError):
-                self.verify_oci(self.oci_entries(("2.5.42-beta.2", label), nested=True))
+                self.verify_oci(entries)
 
     def test_oci_tampered_config_digest_and_size_fail(self):
         original = self.oci_entries()
@@ -965,8 +989,9 @@ class ArtifactTest(unittest.TestCase):
             self.verify_oci(unsupported)
 
     def test_oci_no_runnable_image_or_disguised_attestation_fails(self):
+        empty_entries = self.oci_entries((), attestation=True)
         with self.assertRaisesRegex(ValueError, "no runnable images"):
-            self.verify_oci(self.oci_entries((), attestation=True))
+            self.verify_oci(empty_entries)
         entries = self.oci_entries()
         index = json.loads(entries["index.json"])
         descriptor = index["manifests"][0]
