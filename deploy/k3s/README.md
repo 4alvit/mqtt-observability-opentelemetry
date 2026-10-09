@@ -72,6 +72,21 @@ The `grafana-host-dashboards` ConfigMap contains the exact four JSON files captu
 
 Datasource: provisioned `Prometheus`. Files and UIDs remain stable across pod starts; provenance and SHA-256 are in `dashboards/provenance.json`.
 
+## Grafana health checks under shared CPU load
+
+Grafana requests 250m CPU so health handling and initialization receive more
+relative CPU weight under contention than the previous 50m request. This does
+not impose a CPU ceiling or guarantee spare capacity. Check node scheduling
+headroom before increasing the request on another installation.
+
+The existing `/api/health` endpoint remains the application check. Every probe
+has a five-second timeout. A startup probe allows 60 attempts at five-second
+intervals before normal probes begin; readiness still requires three failures,
+while liveness requires six consecutive failures at 30-second intervals before
+a restart. These nominal budgets tolerate short CPU stalls but still detect a
+persistently unresponsive application. The Recreate strategy, PVC, image,
+memory limit, priority class and credentials are preserved.
+
 ## Runtime security
 
 Grafana, Prometheus and Tempo retain their upstream image UIDs (472, 65534 and
