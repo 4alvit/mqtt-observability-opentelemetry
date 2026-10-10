@@ -6,8 +6,8 @@ arm64. It contains no Kubernetes credentials, deployment manifests or backup
 payloads. Its default user and group are unprivileged numeric ID 65532. The
 current CronJob explicitly overrides both IDs to 0 for its existing read-only
 source-volume access with `DAC_READ_SEARCH`; that deployment setting and
-`recovery/backup.py` remain unchanged. Selecting an image does not silently
-change the CronJob's volume-access contract.
+the source-volume access contract remain unchanged. Selecting an image does
+not silently change the CronJob's volume-access contract.
 
 The normal release asset builder produces `recovery-runtime-container.oci.tar`
 with its version label, checksum and source-policy binding. The existing
@@ -16,11 +16,12 @@ to `ghcr.io/4alvit/mqtt-observability-opentelemetry/recovery-runtime`; it must n
 be replaced with an independent rebuild. Registry authentication and release
 approval remain the existing operator workflow.
 
-After publication, resolve the real registry digest with the existing verified
-image workflow. A separate reviewed change can then pin that immutable digest
-in the CronJob and enable the same-connection Kubernetes TLS policy. Until then,
-this image preparation does not fix or claim coverage of Kubernetes API TLS.
-No placeholder digest or cluster apply is part of this change.
+The Kubernetes recovery client now uses this runtime's cryptography dependency.
+The CronJob pins the digest of the verified v0.2.4 release asset; that exact asset
+must be published through the existing release workflow before merging or
+applying the deployment change. See [the TLS deployment prerequisite](../../docs/recovery-tls.md).
+The source and runtime must be updated together: the plain Python image cannot
+run the TLS policy. The CronJob remains suspended by default.
 
 Regenerate `requirements.lock` with the repository's uv version:
 
@@ -35,3 +36,9 @@ unrelated tooling. `tests/tls/recovery_runtime_probe.py` checks the real image's
 Python/cryptography versions, default UID/GID, verified-chain API and exact
 RSA/EC key decoding. CI runs those probes with no network and a read-only
 container filesystem.
+
+The recovery CI job uses this exact runtime to run the actual Kubernetes client
+against synthetic loopback PKI on amd64 and arm64. Only the hash-locked pytest
+harness is installed into temporary `/tmp`, from predownloaded wheels; the image
+is never modified. Tests run without external networking, with a read-only
+filesystem and disposable `/tmp`; no real token, cluster or backup volume is mounted.

@@ -7,6 +7,6 @@ resources:
   - deploy/cronjob.yaml
 configMapGenerator:
   - name: observability-recovery-code
-    files: [archive.py, restore.py, prepare.py, backup.py, __init__.py, PROVENANCE.json]
+    files: [archive.py, restore.py, prepare.py, backup.py, tls_policy.py, __init__.py, PROVENANCE.json]
 generatorOptions:
   disableNameSuffixHash: true

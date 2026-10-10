@@ -153,5 +153,17 @@ jobs:
           docker buildx build --platform "linux/$ARCH" --load -t recovery-runtime:test recovery/runtime
           docker run --rm --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python -m pip check
           docker run --rm -i --network none --read-only --platform "linux/$ARCH" recovery-runtime:test python - < tests/tls/recovery_runtime_probe.py
+          python3 -m pip download --only-binary=:all: --require-hashes \
+            -r tests/tls/recovery-test-requirements.lock -d "$RUNNER_TEMP/recovery-test-wheels"
+          docker run --rm --network none --read-only --platform "linux/$ARCH" \
+            --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+            -v "$PWD:/workspace:ro" -v "$RUNNER_TEMP/recovery-test-wheels:/test-wheels:ro" \
+            -w /workspace recovery-runtime:test sh -ec '
+              python -m pip install --no-deps --no-index --require-hashes \
+                --find-links=/test-wheels --target /tmp/test-harness \
+                -r tests/tls/recovery-test-requirements.lock
+              PYTHONPATH=/tmp/test-harness:/workspace python -m pytest \
+                -p no:cacheprovider tests/tls/test_kube_tls.py tests/recovery
+            '
 'on':
   workflow_call: {}

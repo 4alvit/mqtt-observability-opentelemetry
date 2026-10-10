@@ -17,9 +17,10 @@ repos:
     exclude: ^recovery/(archive|restore|prepare)\.py$
     args:
     - --load-plugins=pylint_pydantic
-    - --init-hook=import sys; sys.path[:0] = ["mqtt-interceptor/src", "mosquitto-exporter/src", "scripts"]
+    - --init-hook=import sys; sys.path[:0] = [".", "mqtt-interceptor/src", "mosquitto-exporter/src", "scripts"]
     additional_dependencies:
     - pylint-pydantic==0.4.0
+    - cryptography==50.0.2
     - pytest==9.1.1
     - pytest-asyncio==1.4.0
     - PyYAML==6.0.3

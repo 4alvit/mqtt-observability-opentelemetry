@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .archive import create_archive
 from .restore import verify_snapshot
+from .tls_policy import https_opener
 
 OWNER = "observability-mp-v1"
 SERVICES = ("grafana", "prometheus", "tempo")
@@ -48,6 +49,7 @@ class Kube:
         self.context = ssl.create_default_context(
             cafile=str(service_account / "ca.crt")
         )
+        self.opener = https_opener(self.context)
         self.base = (
             "https://"
             + os.environ["KUBERNETES_SERVICE_HOST"]
@@ -60,9 +62,7 @@ class Kube:
         request = urllib.request.Request(
             self.base + path, headers={"Authorization": "Bearer " + self.token}
         )
-        with urllib.request.urlopen(
-            request, context=self.context, timeout=30
-        ) as response:
+        with self.opener.open(request, timeout=30) as response:
             return json.load(response)
 
 
