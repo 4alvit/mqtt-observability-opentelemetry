@@ -34,10 +34,13 @@ The manifest pins the **verified v0.2.4 release artifact** digest
 for `ghcr.io/4alvit/mqtt-observability-opentelemetry/recovery-runtime`.
 The source release is `0c0ef89450aedd35fbf6f7d538ec839a32582a5b` and its
 `recovery-runtime-container.oci.tar` contains both Linux amd64 and arm64.
-At preparation on 2026-10-10, authenticated registry reads of tag `0.2.4` and the pinned digest
-returned `MANIFEST_UNKNOWN`. **Do not merge or deploy until the normal approved
-release workflow publishes that exact verified asset and the digest is readable
-for both platforms.** Do not substitute a rebuild or an invented digest.
+On 2026-10-10 the exact stable release asset was published to GHCR as `0.2.4`
+without rebuilding or changing the index digest. A complete anonymous pull
+verified both Linux platforms, the attestation manifests and every blob digest.
+The package is public; the runtime needs no registry credential to pull it.
+All image layers and configurations were checked for embedded secrets before
+public access was enabled. No credentials or private keys were found.
+Do not substitute a rebuild or an invented digest.
 
 Image selection preserves the existing explicit user/group, read-only mounts,
 capability and storage policies. The CronJob remains suspended by default. This
