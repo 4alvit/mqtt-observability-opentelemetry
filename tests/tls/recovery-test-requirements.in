@@ -1,0 +1,2 @@
+# Test harness only; never installed into the published recovery runtime.
+pytest==9.1.1
