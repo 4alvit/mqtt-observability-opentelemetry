@@ -10,7 +10,8 @@ import importlib.util
 import json
 import os
 import shutil
-import subprocess
+# Subprocess calls use fixed argument vectors with shell=False.
+import subprocess  # nosec B404
 import tempfile
 import threading
 import unittest

@@ -3,7 +3,9 @@
 import importlib.util
 import json
 import os
-import subprocess
+
+# Subprocess is used only for mocked CompletedProcess fixtures.
+import subprocess  # nosec B404
 import sys
 import unittest
 from pathlib import Path

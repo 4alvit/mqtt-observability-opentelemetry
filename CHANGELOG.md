@@ -22,6 +22,10 @@ with an unverified tag or infer that this release changes Kubernetes API TLS.
 
 ### Security
 
+Release tooling now requires an authoritative HTTP 404 response before treating
+a GitHub resource as absent. Status-shaped error messages and unavailable
+response statuses fail closed before release publication or version allocation.
+
 The owned HTTPS trace and metric exporters verify exact certificate-key minima
 on the same connection before sending credentials or telemetry, including
 proxy chains and configured client certificates. RSA keys below 2048 bits and
