@@ -26,7 +26,7 @@ trap 'rm -f "$RENDERED"' EXIT
 # Frozen dashboard JSON exceeds the client-side last-applied annotation limit.
 # Preserve field ownership checks; conflicts require review, never force takeover.
 "$KUBECTL" apply --server-side --field-manager=observability-deploy -f "$RENDERED"
-"${KUBECTL}" -n observability rollout status deployment/prometheus --timeout=300s
+"${KUBECTL}" -n observability rollout status deployment/prometheus --timeout=2100s
 "${KUBECTL}" -n observability rollout status deployment/tempo --timeout=300s
 "${KUBECTL}" -n observability rollout status deployment/grafana --timeout=300s
 "${KUBECTL}" -n observability rollout status deployment/kube-state-metrics --timeout=300s
