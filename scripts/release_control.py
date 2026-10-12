@@ -189,16 +189,12 @@ def parse_json(data: bytes, label: str) -> object:
         raise ReleaseError(f"Invalid JSON in {label}") from exc
 
 
-def github_http_status(stderr: bytes) -> bytes | None:
-    """Read an unambiguous CLI status, never a number embedded in its message."""
-    # JSON errors end with (HTTP NNN); non-JSON errors start with HTTP NNN.
-    # Conflicting diagnostics cannot prove either absence or retryability.
-    statuses = set(re.findall(
-        rb"(?m)^gh: HTTP (\d{3})(?::[^\r\n]*|[ \t]*)\r?$", stderr
-    ) + re.findall(
-        rb"(?m)^gh: [^\r\n]* \(HTTP (\d{3})\)\r?$", stderr
-    ))
-    return next(iter(statuses)) if len(statuses) == 1 else None
+def github_http_status(stdout: bytes) -> bytes | None:
+    """Read only the leading response status emitted by gh api --include."""
+    # stderr can contain verbatim API `errors` strings, even "HTTP 404".
+    # Never search diagnostics, header values or the body for a status.
+    match = re.match(rb"\AHTTP/\d+\.\d+ ([1-5]\d{2})(?: [^\r\n]*)?\r?\n", stdout)
+    return match[1] if match and re.search(rb"\r?\n\r?\n", stdout) else None
 
 
 class GitHub:
@@ -271,13 +267,19 @@ class GitHub:
         self.workflow_scope_verified = True
 
     @staticmethod
-    def response(result: subprocess.CompletedProcess, operation: str = "") -> bytes:
+    def response(
+        result: subprocess.CompletedProcess, operation: str = "", *, included=False
+    ) -> bytes:
         """Translate a completed fixed-form command without retrying failed writes."""
         if result.returncode:
             stderr = result.stderr or b""
             message = stderr.decode(errors="replace").strip()
             context = f"{operation}: " if operation else ""
-            raise GitHubError(context + message, github_http_status(stderr) == b"404")
+            status = github_http_status(result.stdout or b"") if included else None
+            raise GitHubError(context + message, status == b"404")
+        if included:
+            require(github_http_status(result.stdout) is not None, "Missing HTTP response headers")
+            return re.split(rb"\r?\n\r?\n", result.stdout, maxsplit=1)[1]
         return result.stdout
 
     def request(self, path: str, method="GET", body=None, mode="json") -> bytes:
@@ -303,7 +305,7 @@ class GitHub:
                 "Ledger writes must target the dedicated state branch",
             )
         modes = {
-            "json": [],
+            "json": ["--include"],
             "pages": ["--paginate", "--slurp"],
             "asset": ["-H", "Accept: application/octet-stream"],
         }
@@ -337,6 +339,7 @@ class GitHub:
                 check=False,
             ),
             f"{method} {endpoint}",
+            included=mode == "json",
         )
 
     def api(self, path: str, method: str = "GET", body: dict | None = None):

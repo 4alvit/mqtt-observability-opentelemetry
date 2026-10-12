@@ -449,10 +449,10 @@ class AllocationTests(unittest.TestCase):
         client = state.StateGitHub(REPO)
         responses = [
             subprocess.CompletedProcess(
-                [], 0, b'{"ref":"refs/heads/release-version-state"}', b""
+                [], 0, b'HTTP/2.0 200 OK\r\n\r\n{"ref":"refs/heads/release-version-state"}', b""
             ),
             subprocess.CompletedProcess(
-                [], 0, b'{"content":{"sha":"' + SHA.encode() + b'"}}', b""
+                [], 0, b'HTTP/2.0 200 OK\r\n\r\n{"content":{"sha":"' + SHA.encode() + b'"}}', b""
             ),
         ]
         with patch.object(state.subprocess, "run", side_effect=responses) as run:

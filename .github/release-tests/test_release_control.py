@@ -1179,7 +1179,7 @@ class TransportTests(unittest.TestCase):
         gh = rc.GitHub(REPO)
         body = {"body": "--hostname evil.com --clobber #label"}
         with patch.object(
-            rc.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"{}")
+            rc.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"HTTP/2.0 200 OK\r\n\r\n{}")
         ) as command:
             gh.api("")
             gh.api("releases", "POST", body)
@@ -1193,6 +1193,7 @@ class TransportTests(unittest.TestCase):
                 "github.com",
                 "--method",
                 "GET",
+                "--include",
                 "--",
                 f"repos/{REPO}",
             ],
@@ -1225,7 +1226,7 @@ class TransportTests(unittest.TestCase):
             f"compare/{SHA}...feature%2Fbranch",
         ]
         with patch.object(
-            rc.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"{}")
+            rc.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"HTTP/2.0 200 OK\r\n\r\n{}")
         ) as command:
             for path in paths:
                 gh.api(path)
@@ -1462,6 +1463,8 @@ class OfflineValidationTests(unittest.TestCase):
             else:
                 self.assertIn("Accept: application/octet-stream", command)
                 data = b"release asset"
+            if "--include" in command:
+                data = b"HTTP/2.0 200 OK\r\n\r\n" + data
             return subprocess.CompletedProcess(command, 0, data)
 
         with patch.object(rc.subprocess, "run", side_effect=service):
@@ -1944,7 +1947,7 @@ class SupersededCandidateTests(unittest.TestCase):
             f"?branch=main&event=push&head_sha={self.head}&per_page=100"
         )
         result = subprocess.CompletedProcess(
-            [], 0, b'{"total_count":0,"workflow_runs":[]}', b""
+            [], 0, b'HTTP/2.0 200 OK\r\n\r\n{"total_count":0,"workflow_runs":[]}', b""
         )
         with patch.object(rc.subprocess, "run", return_value=result) as command:
             client.api(path)

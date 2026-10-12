@@ -51,6 +51,7 @@ class StateGitHub(rc.GitHub):
                     "github.com",
                     "--method",
                     method,
+                    "--include",
                     *(["--input", "-"] if body else []),
                     "--",
                     f"{self.base}/{path}",
@@ -60,6 +61,7 @@ class StateGitHub(rc.GitHub):
                 check=False,
             ),
             f"{method} {self.base}/{path}",
+            included=True,
         )
 
 
