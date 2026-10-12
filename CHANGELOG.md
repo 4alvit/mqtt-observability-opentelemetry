@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.5]
+
+### Changed
+
+Allow bounded Prometheus WAL recovery before liveness checks begin and align
+the rollout deadline with that startup budget. Retain the Grafana probe fixes
+for shared CPU load. Both Python components now use the same 0.2.5 base version.
+
+### Upgrade
+
+Preserve existing Prometheus storage, collector endpoints and credentials.
+The Prometheus manifest allows up to thirty minutes for startup; readiness
+continues to gate traffic. Publishing a candidate does not apply manifests or
+change the running recovery image.
+
+### Security
+
+The recovery client now validates Kubernetes certificate key strength on the
+same TLS connection before sending its bearer token. Release publication
+requires an authoritative GitHub HTTP status before treating a tag as absent.
+Certificate trust and hostname checks remain required.
+
 ## [0.2.4]
 
 ### Changed
