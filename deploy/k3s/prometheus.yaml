@@ -7,6 +7,7 @@ metadata:
     app: prometheus
 spec:
   replicas: 1
+  progressDeadlineSeconds: 2100
   strategy:
     type: Recreate
   selector:
@@ -59,18 +60,28 @@ spec:
               memory: 256Mi
             limits:
               memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 180
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /-/ready
               port: 9090
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /-/healthy
               port: 9090
             initialDelaySeconds: 30
             periodSeconds: 30
+            timeoutSeconds: 5
       volumes:
         - name: config
           configMap:
