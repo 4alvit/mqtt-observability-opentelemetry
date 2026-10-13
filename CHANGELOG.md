@@ -2,6 +2,10 @@
 
 ## [0.2.5]
 
+### Release candidate validation
+
+- Require bounded fuzzing on public release candidates, with source-bound reports and retained diagnostics; beta and ordinary CI do not run mutation campaigns.
+
 ### Changed
 
 Allow bounded Prometheus WAL recovery before liveness checks begin and align
