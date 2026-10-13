@@ -133,12 +133,12 @@
         "value": "package"
       }
     ],
-    "toolkit_revision": "685054a71f85d5e4cd727791027cc8b61d6ad8f6"
+    "toolkit_revision": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
   },
   "single_entry_ci": true,
   "release_notes": "CHANGELOG.md",
   "fuzzing": {
-    "toolkit_ref": "685054a71f85d5e4cd727791027cc8b61d6ad8f6"
+    "toolkit_ref": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
   },
-  "toolkit_revision": "685054a71f85d5e4cd727791027cc8b61d6ad8f6"
+  "toolkit_revision": "373eaac8e45b2ff2fbd4250ca4d55db3a28be3cc"
 }
