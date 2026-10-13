@@ -1,0 +1,1 @@
+{"sample_rate":0.5,"topic_patterns":"devices/+/telemetry, devices/+/commands"}
