@@ -1,3 +1,8 @@
+# Vendored release toolkit; change the toolkit source, then render again.
+# ruff: noqa
+# mypy: ignore-errors
+# pylint: skip-file
+# fmt: off
 """Keep human release notes bound to the source used to build the package."""
 
 import base64
@@ -226,24 +231,35 @@ class ReleaseNotesTests(unittest.TestCase):
 
     def test_guidance_after_separator_and_subheading_is_preserved(self):
         content = "#### Migration\n\n---\n\n- Restart the worker after upgrading."
-        text = NOTES.replace(
-            "Review optional site settings before enabling the feature.", content
-        )
+        text = NOTES.replace("Review optional site settings before enabling the feature.", content)
         self.assertIn(content, render(text))
 
     def test_literal_markers_in_code_remain_guidance(self):
-        for content in (
-            "```sh\n---\n```",
-            "    ---",
-            "`---`",
-            "\\- - -",
-            "***Restart***",
-        ):
+        for content in ("```sh\n---\n```", "    ---", "`---`", "\\- - -", "***Restart***"):
             text = NOTES.replace(
                 "Review optional site settings before enabling the feature.", content
             )
             with self.subTest(content=content):
                 self.assertIn(content.strip(), render(text))
+
+    def _assert_notes_rejected_before_publication(self, text):
+        github = StrictGitHub(contents(text))
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                release,
+                "source_policy_snapshot",
+                return_value={"data": {"release_notes": "CHANGELOG.md"}},
+            ),
+            self.assertRaisesRegex(release.ReleaseError, "Upgrade guidance"),
+        ):
+            release.publish(
+                github, "v1.2.3", SOURCE, Path(directory), False, "provenance"
+            )
+        self.assertEqual(
+            github.calls, [("GET", f"contents/CHANGELOG.md?ref={SOURCE}", None)]
+        )
+        self.assertEqual(github.writes, [])
 
     def test_indented_version_and_guidance_headings_are_supported(self):
         for indentation in (" ", "  ", "   "):
@@ -258,6 +274,14 @@ class ReleaseNotesTests(unittest.TestCase):
                     "Preserve unavailable telemetry instead of reporting zero.", body
                 )
                 self.assertNotIn("Do not copy older notes either.", body)
+
+    def test_comments_between_text_and_setext_underlines_do_not_hide_ambiguity(self):
+        text = (
+            "## [1.2.3]\nAppendix\n<!-- comment -->\n===\n"
+            "### Upgrade\nRead migration.\n### Security\nNo changes.\n"
+        )
+        with self.assertRaisesRegex(release.ReleaseError, "ATX"):
+            render(text)
 
     def test_setext_appendices_cannot_supply_release_guidance(self):
         for underline in ("=", "===", "-", "---", "   ===", "   ---"):
@@ -277,16 +301,10 @@ class ReleaseNotesTests(unittest.TestCase):
             ):
                 render(crlf)
 
-    def test_comments_between_text_and_setext_underlines_do_not_hide_ambiguity(self):
-        text = (
-            "## [1.2.3]\nAppendix\n<!-- comment -->\n===\n"
-            "### Upgrade\nRead migration.\n### Security\nNo changes.\n"
-        )
+    def test_setext_heading_inside_guidance_is_rejected(self):
+        text = NOTES.replace("### Security", "Underlined appendix\n---\n### Security")
         with self.assertRaisesRegex(release.ReleaseError, "ATX"):
             render(text)
-
-    def test_setext_outside_selected_release_does_not_change_body(self):
-        self.assertEqual(render("Changelog\n===\n" + NOTES), render(NOTES))
 
     def test_thematic_breaks_and_literal_setext_examples_remain_supported(self):
         for example in (
@@ -303,10 +321,8 @@ class ReleaseNotesTests(unittest.TestCase):
         text = NOTES.replace("### Upgrade\n", "### Upgrade\n---\n")
         self.assertIn("### Upgrade\n---\n", render(text))
 
-    def test_setext_heading_inside_guidance_is_rejected(self):
-        text = NOTES.replace("### Security", "Underlined appendix\n---\n### Security")
-        with self.assertRaisesRegex(release.ReleaseError, "ATX"):
-            render(text)
+    def test_setext_outside_selected_release_does_not_change_body(self):
+        self.assertEqual(render("Changelog\n===\n" + NOTES), render(NOTES))
 
     def test_empty_higher_level_atx_headings_end_sections(self):
         for heading in ("#", "##"):
@@ -477,23 +493,7 @@ class ReleaseNotesTests(unittest.TestCase):
 
     def test_comment_only_notes_fail_before_any_remote_mutation(self):
         text = "## [1.2.3]\n### Upgrade\n<!-- todo -->\n### Security\nNo security change.\n"
-        github = StrictGitHub(contents(text))
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            patch.object(
-                release,
-                "source_policy_snapshot",
-                return_value={"data": {"release_notes": "CHANGELOG.md"}},
-            ),
-            self.assertRaisesRegex(release.ReleaseError, "Upgrade guidance"),
-        ):
-            release.publish(
-                github, "v1.2.3", SOURCE, Path(directory), False, "provenance"
-            )
-        self.assertEqual(
-            github.calls, [("GET", f"contents/CHANGELOG.md?ref={SOURCE}", None)]
-        )
-        self.assertEqual(github.writes, [])
+        self._assert_notes_rejected_before_publication(text)
 
     def test_fenced_guidance_cannot_satisfy_real_sections(self):
         for marker in ("```", "````", "~~~", "~~~~~"):
@@ -582,23 +582,7 @@ class ReleaseNotesTests(unittest.TestCase):
 
     def test_fenced_only_notes_fail_before_any_remote_mutation(self):
         text = "## [1.2.3]\n```\n### Upgrade\nExample.\n### Security\nExample.\n```\n"
-        github = StrictGitHub(contents(text))
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            patch.object(
-                release,
-                "source_policy_snapshot",
-                return_value={"data": {"release_notes": "CHANGELOG.md"}},
-            ),
-            self.assertRaisesRegex(release.ReleaseError, "Upgrade guidance"),
-        ):
-            release.publish(
-                github, "v1.2.3", SOURCE, Path(directory), False, "provenance"
-            )
-        self.assertEqual(
-            github.calls, [("GET", f"contents/CHANGELOG.md?ref={SOURCE}", None)]
-        )
-        self.assertEqual(github.writes, [])
+        self._assert_notes_rejected_before_publication(text)
 
     def test_exact_base_and_provenance(self):
         for tag in ("v1.2.3", "v1.2.3-rc.1", "v1.2.3-beta.8"):

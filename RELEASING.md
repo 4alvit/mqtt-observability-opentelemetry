@@ -49,9 +49,16 @@ Nightly and beta are previews; neither is directly promotable to stable. An RC
 may be requested without a previous beta. Channel order is a workflow policy,
 not a comparison of tag strings. Declared adapters map the saved full version to each package format. Native OS fields may retain the numeric base while the application embeds its full identity. RC packages under promote-bytes already use the final base; their original candidate identity remains provenance.
 
+
+
+Once the committed base has a stable tag, automatic push betas report
+`version-required`: quality and security checks still run, while packaging and
+publication are skipped. Prepare the next committed base through a reviewed PR.
+Explicit beta/RC requests still reject an occupied base; nightlies are unchanged.
+
 ## Required validation and evidence
 
-1. The aggregate **CI gate** requires every workflow declared in the policy to
+1. The aggregate **CI gate** requires every workflow selected by the source policy to
    succeed. Failed, missing, canceled or skipped required checks block the gate.
 2. Candidate publication additionally requires the complete platform build matrix
    and **Release gate**. Artifacts from a partially successful matrix are not a
@@ -74,12 +81,9 @@ The maintainer requesting the RC owns its release notes and acceptance evidence.
 Before requesting stable, the maintainer must:
 
 - Review the changes, compatibility impact, known issues and upgrade/recovery
-  instructions. Commit the release notes in `CHANGELOG.md` at the package source
-  revision, with one `## [X.Y.Z]` section matching the release version and nonempty
-  `### Upgrade` and `### Security` guidance. Release preparation fails if those
-  source notes are absent or ambiguous; a PR description cannot substitute.
-  The categories in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-  are a useful format.
+  instructions. Update the existing changelog when present; otherwise include a
+  human-readable summary in the release preparation PR. The categories in
+  [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) are a useful format.
 - Test the exact RC assets on the intended targets, including applicable hardware,
   operating systems, integrations and configuration/data migrations. Record the
   tested RC tag, source SHA, results and limitations in the PR or linked issue.
@@ -88,12 +92,6 @@ Before requesting stable, the maintainer must:
 - Request the exact RC's stable promotion and approve the pending release job.
   Publish user-facing notes alongside the generated provenance without replacing
   any payload or manifest.
-
-Release headings use ATX syntax (leading `#` characters). A heading at the
-same or a higher level ends its section. Setext (underlined) headings inside
-the selected release are rejected; fenced examples and HTML comments cannot
-supply the required guidance. Blank-separated thematic breaks remain allowed.
-Validation preserves the original source text in the published release body.
 
 The current application adapter uses the `release` environment's required reviewer
 on public repositories, where that capability is available without a paid private
@@ -149,7 +147,6 @@ review together with the corresponding workflow changes. Update the toolkit
 template and `.release-policy.json`, then regenerate and review this document and
 the runbook. The README links here rather than duplicating the release procedure.
 
-Upgrade and Security sections need visible instructions or an explicit statement
-that no changes are required. Comments, separator rules and subsection headings
-alone do not satisfy this requirement; instructions may use paragraphs, lists or
-code examples.
+## Release-candidate fuzzing
+
+Every RC must pass bounded, network-isolated fuzz campaigns against the exact candidate source. The release inventory includes the report and its version-plan receipt. PRs, betas, nightlies and stable builds do not run these campaigns; stable qualification verifies the accepted RC evidence. See [the shared fuzzing contract](docs/rc-fuzzing.md) and this project's `.github/fuzz.json` for targets and budgets.

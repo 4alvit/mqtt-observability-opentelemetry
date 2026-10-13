@@ -1,5 +1,7 @@
 # MQTT Observability with OpenTelemetry
 
+[![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
+
 [![CI](https://github.com/4alvit/mqtt-observability-opentelemetry/actions/workflows/ci.yml/badge.svg)](https://github.com/4alvit/mqtt-observability-opentelemetry/actions)
 [![License](https://img.shields.io/github/license/4alvit/mqtt-observability-opentelemetry)](https://github.com/4alvit/mqtt-observability-opentelemetry/blob/main/LICENSE)
 [![codecov](https://img.shields.io/codecov/c/github/4alvit/mqtt-observability-opentelemetry)](https://app.codecov.io/gh/4alvit/mqtt-observability-opentelemetry)
@@ -121,3 +123,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development, bug reports and proposal
 [SECURITY.md](SECURITY.md) for confidential vulnerability reports and deployment
 boundaries, and the [OpenSSF evidence index](docs/openssf-evidence.md) for assessment
 scope and verification.
+
+## Release-candidate fuzzing
+
+The real interceptor trace-configuration validators receive synthetic JSON and comma/JSON topic specifications. Accepted sampling rates must remain finite and bounded, topic values typed, and serialization stable. No proxy listener, MQTT connection or exporter is started.
+
+[RC-only fuzzing policy, local reproduction and failure handling](docs/fuzzing.md).

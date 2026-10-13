@@ -18,6 +18,7 @@ import yaml
 
 COMMIT_SHA_PATTERN = r"[0-9a-f]{40}"
 QUALITY_GATE = "quality-gate.yml"
+LOCAL_WORKFLOW_PREFIX = "./.github/workflows/"
 
 
 class UniqueKeyLoader(yaml.BaseLoader):
@@ -66,12 +67,67 @@ def validate_codeql(workflows):
         )
 
 
+def yaml_member(node, name):
+    """Locate one parsed YAML value without constructing Python objects."""
+    if isinstance(node, yaml.MappingNode):
+        return next((value for key, value in node.value if key.value == name), None)
+    return None
+
+
+def yaml_step_references(source):
+    """Yield action reference nodes while retaining their source locations."""
+    root = yaml.compose(source, Loader=yaml.BaseLoader)
+    jobs = yaml_member(root, "jobs")
+    if not isinstance(jobs, yaml.MappingNode):
+        return
+    for _, job in jobs.value:
+        steps = yaml_member(job, "steps")
+        if not isinstance(steps, yaml.SequenceNode):
+            continue
+        for step in steps.value:
+            yield yaml_member(step, "uses")
+
+
+def codeql_release_comment(filename, reference, lines):
+    """Read the ASCII release comment adjacent to an immutable CodeQL reference."""
+    mark = reference.end_mark
+    tail = lines[mark.line][mark.column:] if mark.line < len(lines) else ""
+    comment = re.match(r"[ \t]*#[ \t]*(v\d+\.\d+\.\d+)(?:[ \t]|$)", tail, flags=re.ASCII)
+    if comment is None:
+        raise ValueError(
+            f"{filename}:{reference.start_mark.line + 1}: "
+            "CodeQL SHA needs an inline full release comment for Renovate"
+        )
+    return comment[1]
+
+
+def validate_codeql_update_metadata(sources):
+    """Keep every CodeQL SHA discoverable by Renovate, including SARIF uploads."""
+    versions = set()
+    for filename, source in sources.items():
+        lines = source.splitlines()
+        for reference in yaml_step_references(source):
+            if not isinstance(reference, yaml.ScalarNode) or not re.fullmatch(
+                r"github/codeql-action/(init|autobuild|analyze|upload-sarif)@"
+                + COMMIT_SHA_PATTERN, reference.value
+            ):
+                continue
+            versions.add(codeql_release_comment(filename, reference, lines))
+    if len(versions) > 1:
+        raise ValueError("CodeQL version comments must name the same release")
+
+
 def validate_action_reference(filename, reference, pins):
     """Check one external action against immutable and canonical pins."""
     if not reference or reference.startswith("./"):
         return
     action, _, revision = reference.partition("@")
-    if not re.fullmatch(COMMIT_SHA_PATTERN, revision):
+    if reference.startswith("docker://"):
+        if not re.fullmatch(
+            r"docker://[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}", reference
+        ):
+            raise ValueError(f"{filename}: Docker actions must use an immutable SHA-256 digest")
+    elif not re.fullmatch(COMMIT_SHA_PATTERN, revision):
         raise ValueError(f"{filename}: {action} must use a full commit SHA")
     if pins is not None and (action not in pins or revision != pins[action]):
         raise ValueError(f"{filename}: {action} differs from generator pins")
@@ -123,7 +179,7 @@ def validate_generator_pins(directory, workflows):
     """Validate generated consumers and the toolkit's canonical pin manifest."""
     pins = generator_pins(directory)
     for filename, workflow in workflows.items():
-        if filename not in {QUALITY_GATE, "release-pipeline.yml"}:
+        if filename not in {QUALITY_GATE, "release-pipeline.yml", "release-quality-gate.yml"}:
             validate_workflow_pins(filename, workflow, None)
             continue
         source = (directory / ".github/workflows" / filename).read_text()
@@ -134,31 +190,33 @@ def validate_generator_pins(directory, workflows):
         validate_workflow_pins(filename, workflow, pins)
 
 
+def _callable_workflow(workflows, visited, filename, chain=()):
+    """Traverse callable workflows, retaining cycle detection before visited pruning."""
+    if filename in chain:
+        raise ValueError(f"Recursive validation: {chain} -> {filename}")
+    if filename in visited:
+        return
+    workflow = workflows[filename]
+    triggers = workflow.get("on", {})
+    if not isinstance(triggers, dict) or "workflow_call" not in triggers:
+        raise ValueError(f"{filename}: missing workflow_call")
+    if set(triggers) - {"workflow_call", "workflow_dispatch"}:
+        raise ValueError(f"{filename}: validation must start through Quality gate")
+    visited.add(filename)
+    for name, job in workflow.get("jobs", {}).items():
+        reference = job.get("uses", "")
+        if reference.startswith(LOCAL_WORKFLOW_PREFIX):
+            _callable_workflow(workflows, visited, reference.rsplit("/", 1)[-1], (*chain, filename))
+        elif "runs-on" in job and "timeout-minutes" not in job:
+            raise ValueError(f"{filename}/{name}: an explicit timeout is required")
+
+
 def validate_graph(workflows, validators):
     """Walk callable validators and enforce one orchestration entry point."""
     visited = set()
 
-    def callable_workflow(filename, chain=()):
-        if filename in chain:
-            raise ValueError(f"Recursive validation: {chain} -> {filename}")
-        if filename in visited:
-            return
-        workflow = workflows[filename]
-        triggers = workflow.get("on", {})
-        if not isinstance(triggers, dict) or "workflow_call" not in triggers:
-            raise ValueError(f"{filename}: missing workflow_call")
-        if set(triggers) - {"workflow_call", "workflow_dispatch"}:
-            raise ValueError(f"{filename}: validation must start through Quality gate")
-        visited.add(filename)
-        for name, job in workflow.get("jobs", {}).items():
-            reference = job.get("uses", "")
-            if reference.startswith("./.github/workflows/"):
-                callable_workflow(reference.rsplit("/", 1)[-1], (*chain, filename))
-            elif "runs-on" in job and "timeout-minutes" not in job:
-                raise ValueError(f"{filename}/{name}: an explicit timeout is required")
-
     for filename in validators:
-        callable_workflow(filename)
+        _callable_workflow(workflows, visited, filename)
     return visited
 
 
@@ -226,15 +284,133 @@ def validate_coverage_callers(policy, workflows, gate):
     return {reference}
 
 
+def validate_release_baseline(jobs, baseline):
+    """Retain each default check and its original condition outside beta releases."""
+    for job_name, original in baseline.items():
+        if job_name in {"scope", "gate"}:
+            continue
+        actual = jobs[job_name]
+        wanted = dict(original)
+        if job_name.startswith(("check-", "coverage-")):
+            condition = original.get("if", "${{ success() }}")[3:-3].strip()
+            wanted["if"] = "${{ inputs.channel != 'beta' && (" + condition + ") }}"
+        if actual != wanted:
+            raise ValueError(
+                "Release validation must retain the complete default checks"
+            )
+
+
+def validate_beta_callers(jobs, beta):
+    """Require the policy-selected beta workflows and their dependencies."""
+    for index, filename in enumerate(beta):
+        job = jobs[f"beta-check-{index}"]
+        if (
+            job.get("uses") != LOCAL_WORKFLOW_PREFIX + filename
+            or job.get("needs") != ["scope", "workflow-contracts"]
+            or job.get("if")
+            != "${{ inputs.channel == 'beta' && needs.scope.outputs.run == 'true' }}"
+        ):
+            raise ValueError("Beta validation caller differs from channel policy")
+
+
+def validate_release_scope(scope):
+    """Require explicit channel selection and full validation in the release scope."""
+    selector = [
+        step
+        for step in scope.get("steps", [])
+        if step.get("name") == "Validate release channel"
+    ]
+    if (
+        scope.get("name") != "Validation profile (${{ inputs.channel }})"
+        or "if" in scope
+        or len(selector) != 1
+        or selector[0].get("run")
+        != 'python3 scripts/release_validation.py select --channel "$RELEASE_CHANNEL"'
+        or selector[0].get("env") != {"RELEASE_CHANNEL": "${{ inputs.channel }}"}
+        or not any(
+            step.get("env", {}).get("FORCE_FULL") == "true"
+            for step in scope.get("steps", [])
+        )
+    ):
+        raise ValueError(
+            "Release validation must prove its channel and force real checks"
+        )
+
+
+def validate_release_gate(gate):
+    """Require the shared fail-closed gate with all dependency results."""
+    commands = [step for step in gate.get("steps", []) if "run" in step]
+    if (
+        gate.get("name") != "CI gate"
+        or gate.get("if") != "${{ always() }}"
+        or len(commands) != 1
+        or commands[0].get("run")
+        != 'python3 scripts/release_validation.py gate --channel "$RELEASE_CHANNEL"'
+        or commands[0].get("env")
+        != {
+            "RESULTS": "${{ toJSON(needs) }}",
+            "RELEASE_CHANNEL": "${{ inputs.channel }}",
+        }
+    ):
+        raise ValueError("Release validation must use the fail-closed profile gate")
+
+
+def validate_release_channels(policy, workflows):
+    """A channel-specific release gate cannot alter or bypass the required PR gate."""
+    name = "release-quality-gate.yml"
+    if "channel_validation_workflows" not in policy:
+        if name in workflows:
+            raise ValueError("Release validation workflow has no channel policy")
+        return
+    from release_validation import channel_workflows, expected_results
+
+    beta = channel_workflows(policy)
+    validate_graph(workflows, beta)
+    wrapper = workflows.get(name, {})
+    if wrapper.get("on") != {
+        "workflow_call": {
+            "inputs": {
+                "channel": {"type": "string", "required": "true"},
+            }
+        }
+    }:
+        raise ValueError("Release validation requires only its explicit channel input")
+    jobs = wrapper.get("jobs", {})
+    expected = set(expected_results(policy, "beta"))
+    if (
+        set(jobs) != expected | {"gate"}
+        or set(jobs["gate"].get("needs", [])) != expected
+    ):
+        raise ValueError(
+            "Release validation gate inventory differs from channel policy"
+        )
+    validate_release_baseline(jobs, workflows[QUALITY_GATE]["jobs"])
+    validate_beta_callers(jobs, beta)
+    validate_release_scope(jobs["scope"])
+    validate_release_gate(jobs["gate"])
+    caller = workflows.get("release-pipeline.yml", {}).get("jobs", {}).get("checks", {})
+    if (
+        caller.get("uses") != LOCAL_WORKFLOW_PREFIX + name
+        or caller.get("needs") != "prepare"
+        or caller.get("with") != {"channel": "${{ needs.prepare.outputs.channel }}"}
+    ):
+        raise ValueError("Release validation must consume the prepared channel")
+
+
 def validate(directory: Path, *, actions_only=False) -> None:
     """Reject duplicate validation triggers, missing gate jobs and mixed CodeQL pins."""
     policy = json.loads((directory / ".release-policy.json").read_text())
-    workflows = {
-        # UniqueKeyLoader inherits BaseLoader: no Python object construction.
-        path.name: yaml.load(path.read_text(), Loader=UniqueKeyLoader)  # nosec B506
+    sources = {
+        path.name: path.read_text()
         for path in (directory / ".github/workflows").glob("*.y*ml")
     }
+    workflows = {
+        # UniqueKeyLoader inherits BaseLoader: no Python object construction.
+        name: yaml.load(source, Loader=UniqueKeyLoader)  # nosec B506
+        for name, source in sources.items()
+    }
     validate_codeql(workflows)
+    validate_codeql_update_metadata(sources)
     validate_generator_pins(directory, workflows)
     if actions_only:
         return
@@ -258,6 +434,7 @@ def validate(directory: Path, *, actions_only=False) -> None:
         )
     if "workflow-contracts" not in gate:
         raise ValueError("CI gate must include its configuration contracts")
+    validate_release_channels(policy, workflows)
 
 
 if __name__ == "__main__":
