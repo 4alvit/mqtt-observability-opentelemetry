@@ -114,7 +114,9 @@ It cannot execute in application pods or change Kubernetes resources.
 The first manual Job must complete, and its three application components must pass
 NAS-side offline metadata preparation in a new private workspace, before the installer unsuspends the daily
 **10:50 UTC** schedule. Jobs are bounded to 80 minutes and never overlap. Each
-application component has a shared 20-minute capture/retry budget. Recurring
+application archive creation has a shared 20-minute capture/retry budget. Block
+selection, post-capture block checks and final set verification are covered by
+the overall Job deadline. Recurring
 archives use gzip level 1 to reduce CPU time as retained blocks grow; cold
 migration keeps the archive helper's default level 9. Component progress logs
 include elapsed time, byte counts and attempts without exposing archive contents.
