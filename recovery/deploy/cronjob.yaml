@@ -4,11 +4,12 @@ metadata:
   name: observability-backup
   namespace: observability
 spec:
-  schedule: "50 10 * * *"
+  # Constant 72-hour interval, including month/year boundaries.
+  schedule: "@every 72h"
   timeZone: Etc/UTC
   suspend: true
   concurrencyPolicy: Forbid
-  startingDeadlineSeconds: 3600
+  # Do not set startingDeadlineSeconds: a sliding deadline resets @every's anchor.
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 3
   jobTemplate:

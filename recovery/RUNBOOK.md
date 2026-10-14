@@ -112,8 +112,14 @@ The source PVCs are mounted read-only. The container drops all capabilities exce
 It cannot execute in application pods or change Kubernetes resources.
 
 The first manual Job must complete, and its three application components must pass
-NAS-side offline metadata preparation in a new private workspace, before the installer unsuspends the daily
-**10:50 UTC** schedule. Jobs are bounded to 80 minutes and never overlap. Each
+NAS-side offline metadata preparation in a new private workspace, before the installer unsuspends the
+**72-hour** schedule (`@every 72h`). Kubernetes anchors the interval to the last
+scheduled run, or to CronJob creation before the first scheduled run; manual
+checks do not move that anchor. The interval continues across month/year boundaries.
+`startingDeadlineSeconds` is deliberately unset because a sliding deadline
+can move the anchor forward and prevent an interval schedule from firing.
+Jobs are bounded to 80 minutes. A persistent NFS advisory lock serializes
+scheduled runs, manual runs, cleanup and retention. Each
 application archive creation has a shared 20-minute capture/retry budget. Block
 selection, post-capture block checks and final set verification are covered by
 the overall Job deadline. Recurring
@@ -124,11 +130,27 @@ Recurring capture stages one ordinary file of up to 128 MiB in memory at a time,
 within the container's 512 MiB limit, avoiding an extra NAS write/read for those
 files. Larger files and SQLite snapshots still use private NAS scratch; migration
 keeps the helper's original 8 MiB memory threshold.
-Failed or incomplete sets are not retention candidates. Only the newest **14 completed,
-owned** sets are retained; migration evidence and unrelated directories are not
-removed. Each set has SHA-256/size/gzip/tar validation and is published only after
+Only the newest **two completed, owned** sets are retained. Retention runs at
+startup and after successful publication, so a failed capture does not erase the
+two retained backups. Each set has SHA-256/size/gzip/tar validation and is published only after
 verification. Each Job checks storage identity and active source pod placement
 both before and after capture.
+
+Startup cleanup removes recognized abandoned `.partial` directories while holding
+the same lock. New drafts carry an owner marker and are also removed immediately
+when capture raises an exception; a killed process leaves cleanup to the next run.
+Legacy unmarked drafts are removed only when their names and contents match this
+backup format and they are at least 24 hours old. Symlinks, malformed or foreign
+owner markers, unknown contents, migration evidence and unrelated directories are
+preserved. The persistent lock file is outside the `snapshots` directory and must
+not be deleted while any backup or maintenance process is running.
+
+For controlled maintenance without creating another backup, run the same mounted
+recovery runtime with `python -B -m recovery.backup --maintenance-only`.
+After suspending scheduling and confirming that no old backup pod remains active,
+`--legacy-min-age-seconds 0` may be added to clear reviewed legacy failures of any
+age. Maintenance Jobs must have no CronJob owner reference, so their success does
+not replace the timestamp of the last successful backup.
 
 Recurring recovery scope is deliberately narrower than the cold migration:
 
@@ -139,16 +161,16 @@ Recurring recovery scope is deliberately narrower than the cold migration:
 - **Prometheus:** only completed immutable ULID blocks with valid metadata/index/
   chunks. WAL, head chunks and transient compaction files are excluded. Overlapping
   block ranges or changes during capture fail the Job. **Roughly the newest three
-  hours may be absent**, in addition to the daily schedule interval.
+  hours may be absent**, in addition to the 72-hour schedule interval.
 - **Tempo:** only finalized tenant/block directories with `meta.json`, plus the
   cluster seed. Active WAL, partial/compacted blocks and dynamic indexes are omitted.
-  **Recent traces are not guaranteed**, in addition to the daily schedule interval.
+  **Recent traces are not guaranteed**, in addition to the 72-hour schedule interval.
   Block identification follows [Tempo 2.6.1's local backend](https://github.com/grafana/tempo/blob/v2.6.1/tempodb/backend/local/local.go).
 
 No service is paused, no admin API is enabled, and no snapshots are presented as a
 boot-tested whole-cluster restore. A failed backup requires investigation; it is
-not permission to weaken source checks. Private incomplete directories may be
-reviewed and deleted individually after identifying their failed Job.
+not permission to weaken source checks. Unknown incomplete directories require
+individual review after identifying their failed Job.
 
 ## Offline restore and metadata preparation
 

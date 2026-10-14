@@ -199,7 +199,7 @@ print(json.dumps({'completed':receipt['completed'],'snapshot':str(snapshot),'wor
         ],
     )
     print(
-        "First app-aware backup verified and prepared offline on NAS; daily schedule enabled."
+        "First app-aware backup verified and prepared offline on NAS; 72-hour schedule enabled."
     )
 
 

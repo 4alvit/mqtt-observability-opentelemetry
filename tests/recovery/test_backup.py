@@ -84,7 +84,7 @@ class BackupTests(unittest.TestCase):
         (good / "meta.compacted.json").write_text("{}")
         self.assertEqual(completed_paths("tempo", self.root), [])
 
-    def test_retention_keeps_unowned_incomplete_and_latest_fourteen(self):
+    def test_retention_keeps_unowned_incomplete_and_latest_two(self):
         for number in range(17):
             path = self.root / (f"20260916T{number:06d}Z-{number:08x}")
             path.mkdir()
@@ -101,7 +101,8 @@ class BackupTests(unittest.TestCase):
         prune(self.root)
         self.assertTrue(unowned.exists())
         self.assertTrue(incomplete.exists())
-        self.assertEqual(len(list(self.root.iterdir())), 16)
+        self.assertEqual(len(list(self.root.iterdir())), 4)
+        self.assertTrue((self.root / "20260916T000015Z-0000000f").exists())
         self.assertTrue((self.root / "20260916T000016Z-00000010").exists())
 
     def test_grafana_recurring_scope_rejects_non_online_sqlite(self):
@@ -195,6 +196,7 @@ class BackupTests(unittest.TestCase):
         completed = list(snapshots.iterdir())
         self.assertEqual(len(completed), 1)
         self.assertFalse(completed[0].name.startswith("."))
+        self.assertFalse((completed[0] / ".backup-owner.json").exists())
         manifest = json.loads((completed[0] / "manifest.json").read_text())
         self.assertTrue(manifest["completed"])
         self.assertEqual(
@@ -203,6 +205,11 @@ class BackupTests(unittest.TestCase):
         )
         self.assertNotIn(private_marker, output.getvalue())
         events = [json.loads(line) for line in output.getvalue().splitlines() if line.startswith("{")]
+        self.assertEqual(events[0], {
+            "event": "observability_backup", "phase": "maintenance", "status": "complete",
+            "removed_partials": 0, "removed_completed": 0,
+        })
+        events = events[1:]
         phases = [("archive", service) for service in (*backup.SERVICES, "kubernetes")]
         phases.extend([("verify", None), ("publish", None)])
         self.assertEqual(
