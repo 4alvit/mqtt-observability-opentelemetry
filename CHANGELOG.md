@@ -8,11 +8,15 @@
 
 ### Changed
 
+Require exact verified-chain key minima for MQTT broker TLS before transmitting credentials or payloads.
+
 Allow bounded Prometheus WAL recovery before liveness checks begin and align
 the rollout deadline with that startup budget. Retain the Grafana probe fixes
 for shared CPU load. Both Python components now use the same 0.2.5 base version.
 
 ### Upgrade
+
+Replace MQTT broker/client certificate chains containing RSA keys below 2048 bits or EC keys below 224 bits. TLS peers must pass both normal trust/hostname validation and exact key checks; plaintext local operation is unchanged.
 
 Preserve existing Prometheus storage, collector endpoints and credentials.
 The Prometheus manifest allows up to thirty minutes for startup; readiness

@@ -35,11 +35,30 @@ CI results are evidence for the tested revision and environment, not proof of sa
 
 Follow `RELEASING.md` and `docs/release-versioning.md`. Document component/image versions, configuration and telemetry-schema migrations, and security fixes without publishing live telemetry. The [release policy](../.release-policy.json) records automation behavior. A new release must identify its source revision and explain notable changes; security fixes must identify relevant advisories when known.
 
-## Criteria still requiring verification
+## Assessment evidence and limits
 
-Before submitting or updating the questionnaire, verify the actual project-specific record: responses to bug and enhancement reports, vulnerability reports in every supported channel, release-note history, unresolved scanner findings, dependency status and required review settings. The primary maintainer must personally confirm knowledge of secure design and common implementation vulnerabilities. A confirmation about another repository does not establish these answers here.
+The maintainer confirmed knowledge of secure design and common implementation
+vulnerabilities for this project. On 2026-10-14 the inspected GitHub history had
+no ordinary bug/enhancement issues or security advisories; the maintainer also
+confirmed no external reports during the preceding 12 months. Private GitHub
+vulnerability reporting is enabled. These historical checks are dated evidence,
+not a promise that future reports can be ignored.
 
-Assess transport encryption, credential storage and privilege limits against the implementation and deployment documented in [SECURITY.md](../SECURITY.md). Do not mark a requirement satisfied solely because a policy says it should be. Record justified non-applicability only where the actual architecture supports it. No paid certification, blanket compliance guarantee or third-party audit is claimed.
+The source-bound `v0.2.5-rc.2` release report records a successful 60-second
+`trace-config` fuzz campaign at commit
+`a414aa2bd8cfbf6f1f6c0871ae814869ee0c5017`:
+[run 38491877975](https://github.com/4alvit/mqtt-observability-opentelemetry/actions/runs/38491877975).
+This is scoped Python fuzzing; it does not establish complete input coverage or
+an independent penetration test. The newer MQTT TLS change adds real loopback
+handshake regressions to the existing TLS job; those regressions are separate
+from the earlier fuzz campaign.
+
+[Governance](../GOVERNANCE.md), [conduct](../CODE_OF_CONDUCT.md) and the
+[roadmap](../ROADMAP.md) describe project participation and its limits. There is
+no backup maintainer or tested one-week access recovery process. Silver
+continuity, whole-project coverage and independent security-assurance claims
+remain unmet. The dynamic README badge links to the public assessment; the
+badge service alone determines its awarded level.
 
 
 ### Release-note structure

@@ -20,6 +20,7 @@ from opentelemetry.sdk.resources import Resource
 
 from mosquitto_exporter._version import __version__
 from mosquitto_exporter.config import Config, load_config
+from mosquitto_exporter.mqtt_tls import broker_tls_context
 from mosquitto_exporter.otlp import create_exporter
 from mosquitto_exporter.readiness import BrokerReadiness, start_metrics_server
 
@@ -526,10 +527,12 @@ class SYSMetricsCollector:
             self.client.username_pw_set(self.config.mqtt.username, self.config.mqtt.password)
 
         if self.config.mqtt.tls_enabled:
-            self.client.tls_set(
-                ca_certs=self.config.mqtt.tls_ca_cert,
-                certfile=self.config.mqtt.tls_certfile,
-                keyfile=self.config.mqtt.tls_keyfile,
+            self.client.tls_set_context(
+                broker_tls_context(
+                    self.config.mqtt.tls_ca_cert,
+                    self.config.mqtt.tls_certfile,
+                    self.config.mqtt.tls_keyfile,
+                )
             )
 
         logger.info(
