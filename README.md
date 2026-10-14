@@ -1,5 +1,7 @@
 # MQTT Observability with OpenTelemetry
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15469/badge)](https://www.bestpractices.dev/en/projects/15469)
+
 [![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
 
 [![CI](https://github.com/4alvit/mqtt-observability-opentelemetry/actions/workflows/ci.yml/badge.svg)](https://github.com/4alvit/mqtt-observability-opentelemetry/actions)
@@ -129,3 +131,7 @@ scope and verification.
 The real interceptor trace-configuration validators receive synthetic JSON and comma/JSON topic specifications. Accepted sampling rates must remain finite and bounded, topic values typed, and serialization stable. No proxy listener, MQTT connection or exporter is started.
 
 [RC-only fuzzing policy, local reproduction and failure handling](docs/fuzzing.md).
+
+## Project participation and maintenance
+
+See [Contributing](CONTRIBUTING.md), [Governance](GOVERNANCE.md), the [Code of Conduct](CODE_OF_CONDUCT.md), [Security policy](SECURITY.md), and the [roadmap](ROADMAP.md). The [OpenSSF evidence index](docs/openssf-evidence.md) records source and validation scope; only the public badge record establishes an awarded level.

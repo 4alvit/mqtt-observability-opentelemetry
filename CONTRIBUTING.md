@@ -15,6 +15,7 @@ Clone the repository, create a branch from `main`, and use the Python version an
 ```sh
 bash scripts/ci.sh lint
 bash scripts/ci.sh test
+bash scripts/ci.sh tls
 ```
 
 The component gates use each component’s uv lock, Ruff, mypy and pytest with coverage; recovery and deployment policy tests are also included. Run `bash scripts/ci.sh integration` with Docker for the disposable Compose smoke test. Kubernetes/host monitoring checks require the explicit fixtures documented by their scripts.

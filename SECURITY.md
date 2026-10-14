@@ -43,33 +43,35 @@ release downloads are served through GitHub HTTPS.
 
 ## Verifying key-length policy in the deployed environment
 
-The exporter delegates MQTT TLS to Paho when `tls_enabled` is true. `recovery/backup.py` uses `ssl.create_default_context` and the service-account CA for Kubernetes HTTPS. The MQTT interceptor and other plaintext local listeners require a separately secured deployment boundary.
+The exporter creates a verified Paho TLS context when `tls_enabled` is true.
+The context checks the broker's complete verified certificate chain before
+Paho can send a CONNECT packet, including the username/password. Configured
+client certificate chains are checked before the connection starts. HTTPS OTLP
+export and Kubernetes recovery use equivalent exact key checks on their own
+connections. See [the transport guide](docs/otlp-transport.md),
+[`mqtt_tls.py`](mosquitto-exporter/src/mosquitto_exporter/mqtt_tls.py) and
+[`recovery/tls_policy.py`](recovery/tls_policy.py).
 
-The verified Python profile is CPython 3.12.14 with OpenSSL 3.5.8 and
-SSL security level 2. At this level OpenSSL rejects RSA/DH keys shorter than
-2048 bits and elliptic-curve keys shorter than 224 bits. It applies the check
-to certificate-chain keys as well as negotiated parameters. Use current
-supported runtime builds which preserve this policy; do not lower the security
-level or turn off certificate/hostname verification to accept an old endpoint.
-Check the interpreter which actually runs the application:
+Supported contexts require TLS 1.2 or later, certificate and hostname validation,
+and OpenSSL security level 2 or higher. Exact checks reject RSA keys below
+2048 bits, elliptic-curve keys below 224 bits and DSA parameters below
+2048/224 bits, including trust anchors. Ed25519 and Ed448 are supported.
+OpenSSL security level 2 alone is insufficient: some builds classify a
+2047-bit RSA key as equivalent to a 2048-bit key. The explicit verified-chain
+check closes that boundary and fails closed when the runtime cannot expose
+the verified chain. It does not replace normal certificate validation.
 
-```sh
-python - <<'PYTHON'
-import ssl
-import sys
-context = ssl.create_default_context()
-print(sys.version)
-print(ssl.OPENSSL_VERSION)
-print(context.security_level, context.minimum_version.name)
-if context.security_level < 2 or context.minimum_version < ssl.TLSVersion.TLSv1_2:
-    raise SystemExit("Unsupported TLS policy: upgrade the runtime; do not weaken verification")
-PYTHON
-```
+The TLS regression suite uses synthetic loopback servers and keys to test
+TLS 1.2/1.3, accepted strong keys, rejected weak leaf/intermediate/root keys,
+wrong hostnames and client-certificate chains. Run `bash scripts/ci.sh tls`
+on supported CPython 3.11 and 3.14 environments. No deployed trust store or
+credentials are needed. A successful test describes that tested runtime;
+operators must preserve its validation settings and upgrade obsolete keys.
 
-On 2026-10-08, isolated local handshakes using the project's installed Python
-client libraries rejected a trusted RSA-1024 server certificate and accepted
-RSA-2048 and ECDSA P-256 certificates. This is evidence for that tested runtime,
-not a claim about every operating-system TLS build or custom client configuration.
+Plaintext local MQTT, HTTP/gRPC and interceptor listeners are not secured by
+these contexts. Isolate them on trusted networks or deploy an independently
+verified secure boundary. Operator-managed ingress, SSH and infrastructure
+services require their own key and identity policies.
 
 Release helpers also invoke `gh`, which has a separate TLS implementation.
 Follow [the release helper profile](docs/RELEASE_TLS_PROFILE.md) for the tested
@@ -78,3 +80,7 @@ smaller certificate keys. That option does not change system-wide settings.
 
 References: [OpenSSL security levels](https://docs.openssl.org/3.5/man3/SSL_CTX_set_security_level/)
 and [Python SSL contexts](https://docs.python.org/3.12/library/ssl.html#ssl.SSLContext).
+
+## Reporter credit
+
+With the reporter's consent, fixed vulnerability advisories and release notes credit the person or organization that reported the issue. Respect requests for anonymity. Record affected versions, mitigation and the fixed revision without disclosing private reproduction data or credentials.
