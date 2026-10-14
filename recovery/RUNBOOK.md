@@ -118,6 +118,10 @@ application component has a shared 20-minute capture/retry budget. Recurring
 archives use gzip level 1 to reduce CPU time as retained blocks grow; cold
 migration keeps the archive helper's default level 9. Component progress logs
 include elapsed time, byte counts and attempts without exposing archive contents.
+Recurring capture stages one ordinary file of up to 128 MiB in memory at a time,
+within the container's 512 MiB limit, avoiding an extra NAS write/read for those
+files. Larger files and SQLite snapshots still use private NAS scratch; migration
+keeps the helper's original 8 MiB memory threshold.
 Failed or incomplete sets are not retention candidates. Only the newest **14 completed,
 owned** sets are retained; migration evidence and unrelated directories are not
 removed. Each set has SHA-256/size/gzip/tar validation and is published only after

@@ -44,6 +44,7 @@ from typing import BinaryIO, Iterator
 SQLITE_HEADER = b"SQLite format 3\x00"
 COPY_CHUNK = 1024 * 1024
 MEMORY_FILE_LIMIT = 8 * 1024 * 1024
+MAX_MEMORY_FILE_LIMIT = 128 * 1024 * 1024
 FILE_COPY_ATTEMPTS = 3
 COMPONENT_ATTEMPTS = 3
 SQLITE_BUSY_WAIT_SECONDS = 5.0
@@ -68,8 +69,12 @@ class _SQLiteBusyTimeout(sqlite3.OperationalError):
 class _MemoryFile(io.BytesIO):
     """Bound staging memory even if a file grows after its initial stat."""
 
+    def __init__(self, limit: int = MEMORY_FILE_LIMIT):
+        super().__init__()
+        self._limit = limit
+
     def write(self, value: bytes) -> int:
-        if self.tell() + len(value) > MEMORY_FILE_LIMIT:
+        if self.tell() + len(value) > self._limit:
             raise SourceChangedError("Source file grew beyond the memory staging limit")
         return super().write(value)
 
@@ -222,7 +227,8 @@ def _copy_stream(source: BinaryIO, target: BinaryIO, deadline: float) -> int:
 
 
 def _copy_regular(
-    root_fd: int, relative: str, target: Path, deadline: float
+    root_fd: int, relative: str, target: Path, deadline: float,
+    memory_file_limit: int = MEMORY_FILE_LIMIT,
 ) -> tuple[os.stat_result, bool, io.BytesIO | None]:
     """Stage stable small files in bounded RAM; databases and large files use NAS."""
     last_error: Exception | None = None
@@ -243,8 +249,8 @@ def _copy_regular(
                     if header == SQLITE_HEADER:
                         return before, True, None
                     source.seek(0)
-                    if before.st_size <= MEMORY_FILE_LIMIT:
-                        memory = _MemoryFile()
+                    if before.st_size <= memory_file_limit:
+                        memory = _MemoryFile(memory_file_limit)
                         copied = _copy_stream(source, memory, deadline)
                     else:
                         target.touch(mode=0o600, exist_ok=True)
@@ -574,6 +580,7 @@ def _create_archive_attempt(
     exclusions: tuple[str, ...],
     deadline: float,
     compresslevel: int,
+    memory_file_limit: int,
 ) -> dict:
     parent = destination.parent
     metadata: dict = {
@@ -625,7 +632,9 @@ def _create_archive_attempt(
                         archive.addfile(info)
                         metadata["symlinks"].append({"path": relative, "target": target})
                     elif stat.S_ISREG(initial.st_mode):
-                        original, is_sqlite, memory = _copy_regular(root_fd, relative, staged, deadline)
+                        original, is_sqlite, memory = _copy_regular(
+                            root_fd, relative, staged, deadline, memory_file_limit
+                        )
                         if is_sqlite:
                             method, guard = _snapshot_sqlite(source, root_fd, relative, original, staged, deadline)
                             if method == "stable_wal":
@@ -692,6 +701,7 @@ def create_archive(
     timeout_seconds: float = 120,
     *,
     compresslevel: int = 9,
+    memory_file_limit: int = MEMORY_FILE_LIMIT,
 ) -> dict:
     """Atomically publish a gzip tar and return its checksum and capture metadata.
 
@@ -703,8 +713,9 @@ def create_archive(
     Ordinary source files and tree membership must be unchanged between the
     initial inventory and final check. A changed tree retries the whole component
     up to three times under ONE shared deadline, then raises SourceChangedError.
-    Ordinary files at most 8 MiB are staged in bounded memory to avoid a separate
-    NAS write/read/unlink cycle; SQLite and larger files always use NAS scratch.
+    Ordinary files up to memory_file_limit (8 MiB by default, at most 128 MiB)
+    are staged one at a time in bounded memory to avoid a separate NAS
+    write/read/unlink cycle; SQLite and larger files always use NAS scratch.
     Online SQLite snapshots exclude changing database content and sidecars from
     that comparison, while still detecting database replacement/removal.
     Inactive databases copied after a read-only WAL open failure retain strict
@@ -720,6 +731,8 @@ def create_archive(
         raise ValueError("timeout_seconds must be finite and positive")
     if type(compresslevel) is not int or not 0 <= compresslevel <= 9:
         raise ValueError("compresslevel must be an integer from 0 through 9")
+    if type(memory_file_limit) is not int or not 1 <= memory_file_limit <= MAX_MEMORY_FILE_LIMIT:
+        raise ValueError("memory_file_limit must be an integer from 1 through 134217728")
     deadline = time.monotonic() + timeout_seconds
     exclusions = _normalize_excludes(excludes)
     source = Path(source).absolute()
@@ -738,7 +751,7 @@ def create_archive(
         _check_deadline(deadline)
         try:
             metadata = _create_archive_attempt(
-                source, destination, exclusions, deadline, compresslevel
+                source, destination, exclusions, deadline, compresslevel, memory_file_limit
             )
             metadata["attempts"] = attempt
             return metadata

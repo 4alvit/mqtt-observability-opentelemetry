@@ -27,6 +27,9 @@ OWNER = "observability-mp-v1"
 SERVICES = ("grafana", "prometheus", "tempo")
 COMPONENT_TIMEOUT_SECONDS = 1200
 BACKUP_COMPRESSLEVEL = 1
+# Only one ordinary file is staged in RAM at a time; 128 MiB leaves headroom
+# within the backup pod's 512 MiB memory limit. SQLite still uses NAS scratch.
+BACKUP_MEMORY_FILE_LIMIT = 128 * 1024 * 1024
 LIMITS = {
     "grafana": "Online SQLite snapshot plus stable application files and namespace configuration.",
     "prometheus": "Completed immutable blocks only; no WAL/head. Roughly the most recent three hours may be absent.",
@@ -293,6 +296,7 @@ def block_archive(service, root, destination):
         root, destination, excludes=excludes,
         timeout_seconds=COMPONENT_TIMEOUT_SECONDS,
         compresslevel=BACKUP_COMPRESSLEVEL,
+        memory_file_limit=BACKUP_MEMORY_FILE_LIMIT,
     )
     # A newly created partial/active block must never slip through a stale exclusion list.
     with tarfile.open(destination, "r:gz") as archive:
@@ -360,6 +364,7 @@ def main():
                     source, destination,
                     timeout_seconds=COMPONENT_TIMEOUT_SECONDS,
                     compresslevel=BACKUP_COMPRESSLEVEL,
+                    memory_file_limit=BACKUP_MEMORY_FILE_LIMIT,
                 )
                 if service == "grafana"
                 else block_archive(service, source, destination)
@@ -394,7 +399,8 @@ def main():
                 )
         save(directory / "storage-identities.json", identities)
         component = create_archive(
-            directory, draft / "kubernetes.tar.gz", compresslevel=BACKUP_COMPRESSLEVEL
+            directory, draft / "kubernetes.tar.gz", compresslevel=BACKUP_COMPRESSLEVEL,
+            memory_file_limit=BACKUP_MEMORY_FILE_LIMIT,
         )
         progress.update(component)
         component.update(

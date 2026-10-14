@@ -75,6 +75,113 @@ class ArchiveTests(unittest.TestCase):
         with tarfile.open(self.destination) as captured:
             self.assertEqual(captured.extractfile("payload").read(), b"uncompressed gzip fixture")
 
+    def test_memory_override_stages_above_default_limit_without_disk_copy(self):
+        payload = b"x" * (archive.MEMORY_FILE_LIMIT + 1)
+        (self.source / "payload").write_bytes(payload)
+        original = archive._copy_regular
+        buffers = []
+
+        def observe_copy(*args):
+            result = original(*args)
+            self.assertIsNotNone(result[2])
+            self.assertFalse(args[2].exists())
+            buffers.append(result[2])
+            return result
+
+        with patch.object(archive, "_copy_regular", side_effect=observe_copy):
+            archive.create_archive(
+                self.source, self.destination, compresslevel=1,
+                memory_file_limit=archive.MAX_MEMORY_FILE_LIMIT,
+            )
+        self.assertTrue(all(buffer.closed for buffer in buffers))
+        with tarfile.open(self.destination) as captured:
+            self.assertEqual(captured.extractfile("payload").read(), payload)
+
+    def test_memory_limit_boundary_uses_disk_above_limit_and_does_not_change_default(self):
+        limit = 32
+        for name, length in (("at-limit", limit), ("over-limit", limit + 1)):
+            (self.source / name).write_bytes(b"x" * length)
+        original = archive._copy_regular
+        observations = {}
+
+        def observe_copy(*args):
+            result = original(*args)
+            observations[args[1]] = (result[2] is not None, args[2].exists())
+            return result
+
+        with patch.object(archive, "_copy_regular", side_effect=observe_copy):
+            archive.create_archive(self.source, self.destination, memory_file_limit=limit)
+            self.assertEqual(observations, {
+                "at-limit": (True, False), "over-limit": (False, True),
+            })
+            observations.clear()
+            self.destination.unlink()
+            archive.create_archive(self.source, self.destination)
+        self.assertEqual(observations, {
+            "at-limit": (True, False), "over-limit": (True, False),
+        })
+        with tarfile.open(self.destination) as captured:
+            self.assertEqual(captured.extractfile("at-limit").read(), b"x" * limit)
+            self.assertEqual(captured.extractfile("over-limit").read(), b"x" * (limit + 1))
+
+    def test_invalid_memory_limits_are_rejected_before_staging(self):
+        for limit in (-1, 0, archive.MAX_MEMORY_FILE_LIMIT + 1, 1.0, True, False, "1", None):
+            with self.subTest(limit=limit), self.assertRaises(ValueError):
+                archive.create_archive(self.source, self.destination, memory_file_limit=limit)
+            self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_multiple_files_have_only_one_live_memory_payload(self):
+        for name in ("first", "second", "third"):
+            (self.source / name).write_bytes(b"fixture")
+        constructor = archive._MemoryFile
+        buffers = []
+
+        def allocate(*args, **kwargs):
+            self.assertTrue(all(buffer.closed for buffer in buffers))
+            result = constructor(*args, **kwargs)
+            buffers.append(result)
+            return result
+
+        with patch.object(archive, "_MemoryFile", side_effect=allocate):
+            archive.create_archive(self.source, self.destination, memory_file_limit=32)
+        self.assertEqual(len(buffers), 3)
+        self.assertTrue(all(buffer.closed for buffer in buffers))
+
+    def test_growing_files_cannot_exceed_memory_bound_or_publish_unstable_capture(self):
+        limit = 32
+        source = self.source / "payload"
+        source.write_bytes(b"small fixture")
+        original_copy = archive._copy_stream
+        constructor = archive._MemoryFile
+        original_write = constructor.write
+        buffers, lengths = [], []
+
+        def allocate(*args, **kwargs):
+            result = constructor(*args, **kwargs)
+            buffers.append(result)
+            return result
+
+        def grow_before_read(*args):
+            with source.open("ab") as changed:
+                changed.write(b"x" * (limit + 1))
+            return original_copy(*args)
+
+        def bounded_write(buffer, value):
+            try:
+                return original_write(buffer, value)
+            finally:
+                lengths.append(buffer.tell())
+
+        with patch.object(constructor, "write", bounded_write), patch.object(
+            archive, "_MemoryFile", side_effect=allocate
+        ), patch.object(archive, "_copy_stream", side_effect=grow_before_read):
+            with self.assertRaises(archive.SourceChangedError):
+                archive.create_archive(self.source, self.destination, memory_file_limit=limit)
+        self.assertTrue(lengths)
+        self.assertLessEqual(max(lengths), limit)
+        self.assertTrue(all(buffer.closed for buffer in buffers))
+        self.assertEqual(list(self.output.iterdir()), [])
+
     def test_fast_live_sqlite_capture_includes_committed_wal_without_sidecars(self):
         database = self.source / "grafana.db"
         live = sqlite3.connect(database)
@@ -87,7 +194,12 @@ class ArchiveTests(unittest.TestCase):
         wal = Path(str(database) + "-wal")
         before = (database.read_bytes(), wal.read_bytes())
 
-        result = archive.create_archive(self.source, self.destination, compresslevel=1)
+        with patch.object(archive, "_MemoryFile", wraps=archive._MemoryFile) as memory:
+            result = archive.create_archive(
+                self.source, self.destination, compresslevel=1,
+                memory_file_limit=archive.MAX_MEMORY_FILE_LIMIT,
+            )
+        memory.assert_not_called()
 
         self.assertEqual(result["sqlite_databases"], ["grafana.db"])
         self.assertEqual(result["sqlite_quiescent_copies"], [])

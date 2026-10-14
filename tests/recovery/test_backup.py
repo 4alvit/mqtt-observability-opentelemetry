@@ -189,7 +189,9 @@ class BackupTests(unittest.TestCase):
         for service in backup.SERVICES:
             self.assertEqual(calls[service + ".tar.gz"]["compresslevel"], 1)
             self.assertEqual(calls[service + ".tar.gz"]["timeout_seconds"], 1200)
+            self.assertEqual(calls[service + ".tar.gz"]["memory_file_limit"], 128 * 1024 * 1024)
         self.assertEqual(calls["kubernetes.tar.gz"]["compresslevel"], 1)
+        self.assertEqual(calls["kubernetes.tar.gz"]["memory_file_limit"], 128 * 1024 * 1024)
         completed = list(snapshots.iterdir())
         self.assertEqual(len(completed), 1)
         self.assertFalse(completed[0].name.startswith("."))
