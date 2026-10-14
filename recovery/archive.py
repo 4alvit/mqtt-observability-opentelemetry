@@ -573,6 +573,7 @@ def _create_archive_attempt(
     destination: Path,
     exclusions: tuple[str, ...],
     deadline: float,
+    compresslevel: int,
 ) -> dict:
     parent = destination.parent
     metadata: dict = {
@@ -598,7 +599,9 @@ def _create_archive_attempt(
             skipped_sidecars: set[str] = set()
             quiescent_guards: dict[str, tuple] = {}
             names = ["."]
-            with tarfile.open(draft, "w:gz", format=tarfile.PAX_FORMAT) as archive:
+            with tarfile.open(
+                draft, "w:gz", format=tarfile.PAX_FORMAT, compresslevel=compresslevel
+            ) as archive:
                 root_info = _tar_info(".", root_metadata)
                 root_info.type = tarfile.DIRTYPE
                 archive.addfile(root_info)
@@ -687,6 +690,8 @@ def create_archive(
     destination: Path,
     excludes: list[str] | None = None,
     timeout_seconds: float = 120,
+    *,
+    compresslevel: int = 9,
 ) -> dict:
     """Atomically publish a gzip tar and return its checksum and capture metadata.
 
@@ -708,9 +713,13 @@ def create_archive(
     hashes; this fallback is explicitly recorded and is not transactional backup.
     The '.' directory member records the source root's ownership, mode and mtime;
     the returned directories count includes that root.
+    Gzip compression accepts levels 0 through 9; the default preserves the
+    original maximum compression, while callers can trade space for less CPU.
     """
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be finite and positive")
+    if type(compresslevel) is not int or not 0 <= compresslevel <= 9:
+        raise ValueError("compresslevel must be an integer from 0 through 9")
     deadline = time.monotonic() + timeout_seconds
     exclusions = _normalize_excludes(excludes)
     source = Path(source).absolute()
@@ -728,7 +737,9 @@ def create_archive(
     for attempt in range(1, COMPONENT_ATTEMPTS + 1):
         _check_deadline(deadline)
         try:
-            metadata = _create_archive_attempt(source, destination, exclusions, deadline)
+            metadata = _create_archive_attempt(
+                source, destination, exclusions, deadline, compresslevel
+            )
             metadata["attempts"] = attempt
             return metadata
         except (SourceChangedError, FileNotFoundError) as error:

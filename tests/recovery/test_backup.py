@@ -3,13 +3,18 @@
 # Test fixtures intentionally mirror the client protocol and use unittest cleanup.
 # pylint: disable=missing-function-docstring,missing-class-docstring,consider-using-with
 import hashlib
+import io
 import json
+import os
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing, redirect_stdout
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+from recovery import backup
 from recovery.backup import (
     OWNER,
     block_archive,
@@ -134,6 +139,89 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256((root / name).read_bytes()).hexdigest(), expected
             )
+
+    def test_recurring_backup_uses_fast_bounded_capture_and_publishes_verified_set(self):
+        sources = self.root / "sources"
+        for service in backup.SERVICES:
+            (sources / service).mkdir(parents=True)
+        with closing(sqlite3.connect(sources / "grafana/grafana.db")) as connection, connection:
+            connection.execute("CREATE TABLE dashboard (title TEXT)")
+            connection.execute("INSERT INTO dashboard VALUES ('retained dashboard')")
+        self.block().rename(sources / "prometheus/01ARZ3NDEKTSV4RRFFQ69G5FAV")
+        tempo_block = sources / "tempo/blocks/single-tenant/cd052567-5c96-4351-92d4-f38e55d5cb03"
+        tempo_block.mkdir(parents=True)
+        (tempo_block / "meta.json").write_text(json.dumps({"blockID": tempo_block.name}))
+        (tempo_block / "data.parquet").write_bytes(b"finalized trace block")
+        identities = self.root / "storage.json"
+        identities.write_text(json.dumps({name: {} for name in (*backup.SERVICES, "backups")}))
+        snapshots = self.root / "snapshots"
+        mapped = {
+            "/sources": sources,
+            "/identity/storage.json": identities,
+            "/backup/snapshots": snapshots,
+        }
+        client = Mock()
+        private_marker = "private export content must not enter logs"
+        client.get.return_value = {"private": private_marker}
+        output = io.StringIO()
+
+        def fixture_path(value):
+            return mapped.get(str(value), Path(value))
+
+        previous_umask = os.umask(0o077)
+        os.umask(previous_umask)
+        try:
+            with patch.object(backup, "Path", side_effect=fixture_path), patch.object(
+                backup, "Kube", return_value=client
+            ), patch.object(backup, "check_identities") as identities_check, patch.object(
+                backup, "create_archive", wraps=backup.create_archive
+            ) as capture, patch.object(
+                backup, "verify_snapshot", wraps=backup.verify_snapshot
+            ) as verify, redirect_stdout(output):
+                backup.main()
+        finally:
+            os.umask(previous_umask)
+
+        self.assertEqual(identities_check.call_count, 2)
+        verify.assert_called_once()
+        self.assertEqual(capture.call_count, 4)
+        calls = {call.args[1].name: call.kwargs for call in capture.call_args_list}
+        for service in backup.SERVICES:
+            self.assertEqual(calls[service + ".tar.gz"]["compresslevel"], 1)
+            self.assertEqual(calls[service + ".tar.gz"]["timeout_seconds"], 1200)
+        self.assertEqual(calls["kubernetes.tar.gz"]["compresslevel"], 1)
+        completed = list(snapshots.iterdir())
+        self.assertEqual(len(completed), 1)
+        self.assertFalse(completed[0].name.startswith("."))
+        manifest = json.loads((completed[0] / "manifest.json").read_text())
+        self.assertTrue(manifest["completed"])
+        self.assertEqual(
+            [item["name"] for item in manifest["components"]],
+            [*backup.SERVICES, "kubernetes"],
+        )
+        self.assertNotIn(private_marker, output.getvalue())
+        events = [json.loads(line) for line in output.getvalue().splitlines() if line.startswith("{")]
+        phases = [("archive", service) for service in (*backup.SERVICES, "kubernetes")]
+        phases.extend([("verify", None), ("publish", None)])
+        self.assertEqual(
+            [(event["phase"], event.get("service"), event["status"]) for event in events],
+            [(phase, service, status) for phase, service in phases for status in ("start", "complete")],
+        )
+
+    def test_progress_failure_is_flushed_without_private_exception_details(self):
+        private_marker = "private source path and secret fixture"
+        with patch("builtins.print") as output:
+            with self.assertRaisesRegex(RuntimeError, private_marker):
+                with backup._progress("archive", "prometheus"):
+                    raise RuntimeError(private_marker)
+        self.assertEqual(output.call_count, 2)
+        events = []
+        for call in output.call_args_list:
+            self.assertIs(call.kwargs["flush"], True)
+            self.assertNotIn(private_marker, call.args[0])
+            events.append(json.loads(call.args[0]))
+        self.assertEqual([event["status"] for event in events], ["start", "failed"])
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
 
     def binding(self):
         expected = {

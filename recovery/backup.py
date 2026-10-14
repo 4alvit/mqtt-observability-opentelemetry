@@ -11,8 +11,10 @@ import shutil
 import ssl
 import tarfile
 import tempfile
+import time
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from itertools import pairwise
 from pathlib import Path
@@ -23,11 +25,47 @@ from .tls_policy import https_opener
 
 OWNER = "observability-mp-v1"
 SERVICES = ("grafana", "prometheus", "tempo")
+COMPONENT_TIMEOUT_SECONDS = 1200
+BACKUP_COMPRESSLEVEL = 1
 LIMITS = {
     "grafana": "Online SQLite snapshot plus stable application files and namespace configuration.",
     "prometheus": "Completed immutable blocks only; no WAL/head. Roughly the most recent three hours may be absent.",
     "tempo": "Finalized local blocks only; no active WAL. Recent traces are not guaranteed.",
 }
+
+
+@contextmanager
+def _progress(phase, service=None):
+    """Report bounded operational metadata without source paths or exceptions."""
+    started = time.monotonic()
+    event = {"event": "observability_backup", "phase": phase}
+    if service is not None:
+        event["service"] = service
+    print(json.dumps({**event, "status": "start"}), flush=True)
+    details = {}
+    try:
+        yield details
+    except Exception as error:
+        print(
+            json.dumps({
+                **event,
+                "status": "failed",
+                "duration_seconds": round(time.monotonic() - started, 3),
+                "error_type": type(error).__name__,
+            }),
+            flush=True,
+        )
+        raise
+    else:
+        print(
+            json.dumps({
+                **event,
+                "status": "complete",
+                "duration_seconds": round(time.monotonic() - started, 3),
+                **{key: details[key] for key in ("bytes", "uncompressed_bytes", "attempts") if key in details},
+            }),
+            flush=True,
+        )
 
 
 def save(path, value):
@@ -251,7 +289,11 @@ def block_archive(service, root, destination):
                 excludes.append(relative)
                 if name in dirs:
                     dirs.remove(name)
-    result = create_archive(root, destination, excludes=excludes, timeout_seconds=600)
+    result = create_archive(
+        root, destination, excludes=excludes,
+        timeout_seconds=COMPONENT_TIMEOUT_SECONDS,
+        compresslevel=BACKUP_COMPRESSLEVEL,
+    )
     # A newly created partial/active block must never slip through a stale exclusion list.
     with tarfile.open(destination, "r:gz") as archive:
         for member in archive:
@@ -312,18 +354,24 @@ def main():
     for service in SERVICES:
         source = Path("/sources") / service
         destination = draft / (service + ".tar.gz")
-        result = (
-            create_archive(source, destination, timeout_seconds=600)
-            if service == "grafana"
-            else block_archive(service, source, destination)
-        )
-        if service == "grafana":
-            validate_grafana_capture(result)
+        with _progress("archive", service) as progress:
+            result = (
+                create_archive(
+                    source, destination,
+                    timeout_seconds=COMPONENT_TIMEOUT_SECONDS,
+                    compresslevel=BACKUP_COMPRESSLEVEL,
+                )
+                if service == "grafana"
+                else block_archive(service, source, destination)
+            )
+            if service == "grafana":
+                validate_grafana_capture(result)
+            progress.update(result)
         result.update(
             name=service, source=identities[service], recovery_scope=LIMITS[service]
         )
         components.append(result)
-    with tempfile.TemporaryDirectory(prefix="observability-config-") as directory:
+    with _progress("archive", "kubernetes") as progress, tempfile.TemporaryDirectory(prefix="observability-config-") as directory:
         directory = Path(directory)
         groups = {
             "/api/v1": [
@@ -345,7 +393,10 @@ def main():
                     kube.get(prefix + "/namespaces/observability/" + kind),
                 )
         save(directory / "storage-identities.json", identities)
-        component = create_archive(directory, draft / "kubernetes.tar.gz")
+        component = create_archive(
+            directory, draft / "kubernetes.tar.gz", compresslevel=BACKUP_COMPRESSLEVEL
+        )
+        progress.update(component)
         component.update(
             name="kubernetes", source="private read-only namespace recovery export"
         )
@@ -361,22 +412,25 @@ def main():
             "metadata": {"owner": OWNER, "scope": LIMITS},
         },
     )
-    verify_snapshot(draft)
-    for name in ("restore.py", "prepare.py", "PROVENANCE.json"):
-        shutil.copyfile(Path(__file__).parent / name, draft / name)
-        (draft / name).chmod(0o600)
-    for path in draft.iterdir():
-        with path.open("rb") as content:
-            os.fsync(content.fileno())
-    os.rename(draft, root / tag)
-    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    with _progress("verify"):
+        verify_snapshot(draft)
+    with _progress("publish"):
+        for name in ("restore.py", "prepare.py", "PROVENANCE.json"):
+            shutil.copyfile(Path(__file__).parent / name, draft / name)
+            (draft / name).chmod(0o600)
+        for path in draft.iterdir():
+            with path.open("rb") as content:
+                os.fsync(content.fileno())
+        os.rename(draft, root / tag)
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     prune(root)
     print(
-        "Verified observability backup published; retained 14 completed owned snapshots. Recent metrics/traces are excluded as documented."
+        "Verified observability backup published; retained 14 completed owned snapshots. Recent metrics/traces are excluded as documented.",
+        flush=True,
     )
 
 

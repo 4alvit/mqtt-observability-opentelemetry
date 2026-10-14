@@ -13,7 +13,8 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 2400
+      # Three 20-minute component budgets plus namespace export and verification.
+      activeDeadlineSeconds: 4800
       backoffLimit: 0
       template:
         metadata:
@@ -28,7 +29,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: backup
-              # Publish the verified v0.2.4 recovery OCI asset before enabling this change.
+              # Pinned recovery runtime includes the verified Kubernetes TLS dependencies.
               image: ghcr.io/4alvit/mqtt-observability-opentelemetry/recovery-runtime@sha256:278fe9cf32be53f1b1503d9ea2b9c0c59c07804af94ee1164ae5feb4cfac5aac
               command: [python, -B, -m, recovery.backup]
               workingDir: /code

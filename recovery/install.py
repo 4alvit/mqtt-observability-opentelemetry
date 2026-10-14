@@ -140,9 +140,9 @@ def install(context, evidence, enable=False):
             "wait",
             "--for=condition=complete",
             "job/" + name,
-            "--timeout=2400s",
+            "--timeout=4800s",
         ],
-        timeout=2430,
+        timeout=4830,
     )
     # A real NAS-side offline preparation is required before enabling recurrence.
     proof_code = r"""
