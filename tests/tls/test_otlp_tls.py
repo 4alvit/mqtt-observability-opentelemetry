@@ -10,6 +10,7 @@ import os
 import select
 import socket
 import ssl
+import struct
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -717,9 +718,10 @@ def proxy(
                 # TLS clients may reject this proxy certificate or close its tunnel.
                 if request and not request.endswith(b"\r\n\r\n"):
                     errors.append(error)
-            except ConnectionResetError as error:
-                # A rejected proxy may receive a TCP reset before any CONNECT byte.
-                if request:
+            except (ConnectionResetError, BrokenPipeError) as error:
+                # Certificate rejection may close either the proxy handshake or
+                # an established CONNECT tunnel. Partial headers still fail.
+                if request and not request.endswith(b"\r\n\r\n"):
                     errors.append(error)
             except Exception as error:  # noqa: BLE001 - propagate worker failures to the test assertion
                 errors.append(error)
@@ -744,6 +746,48 @@ def proxy(
             thread.join(6)
             assert not thread.is_alive()
             assert not errors, errors
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_proxy_reset_preserves_partial_header_failures(complete: bool) -> None:
+    """A real TCP reset may end a tunnel, but must not hide truncated CONNECT."""
+    observed_request = threading.Event()
+    original_recv = socket.socket.recv
+    request = b""
+
+    def observe_recv(sock: socket.socket, *args: Any, **kwargs: Any) -> bytes:
+        data = original_recv(sock, *args, **kwargs)
+        if data == request:
+            observed_request.set()
+        return data
+
+    def exercise() -> None:
+        nonlocal request
+        with socket.socket() as origin:
+            origin.bind(("127.0.0.1", 0))
+            origin.listen(1)
+            target_port = origin.getsockname()[1]
+            request = f"CONNECT localhost:{target_port} HTTP/1.1\r\n".encode()
+            if complete:
+                request += b"\r\n"
+            with (
+                patch.object(socket.socket, "recv", observe_recv),
+                proxy(target_port, None) as (port, _),
+                socket.create_connection(("127.0.0.1", port), timeout=5) as client,
+            ):
+                client.sendall(request)
+                assert observed_request.wait(5)
+                if complete:
+                    assert client.recv(8192).startswith(b"HTTP/1.1 200")
+                client.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                )
+
+    if complete:
+        exercise()
+    else:
+        with pytest.raises(AssertionError, match="ConnectionResetError"):
+            exercise()
 
 
 @pytest.mark.parametrize("encrypted_proxy", [False, True])
