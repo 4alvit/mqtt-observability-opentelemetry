@@ -29,7 +29,20 @@
         "-max_len=4096"
       ],
       "seconds": 60,
-      "corpus": "fuzz/corpus/trace-config"
+      "corpus": "fuzz/corpus/trace-config",
+      "instrumentation": [
+        {
+          "module": "mqtt_interceptor.config",
+          "functions": [
+            "TraceConfig.parse_topic_patterns"
+          ]
+        }
+      ]
     }
+  ],
+  "preflight-paths": [
+    ".github/requirements-fuzz.in",
+    "fuzz",
+    "mqtt-interceptor"
   ]
 }
