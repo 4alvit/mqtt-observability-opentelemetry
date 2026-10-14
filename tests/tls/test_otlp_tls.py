@@ -690,6 +690,8 @@ def proxy(
                         while b"\r\n\r\n" not in request:
                             data = incoming.recv(8192)
                             if not data:
+                                if request:
+                                    raise ValueError("Incomplete CONNECT headers")
                                 return
                             request += data
                         observed.append(request)
@@ -749,15 +751,20 @@ def proxy(
 
 
 @pytest.mark.parametrize("complete", [False, True])
-def test_proxy_reset_preserves_partial_header_failures(complete: bool) -> None:
-    """A real TCP reset may end a tunnel, but must not hide truncated CONNECT."""
+@pytest.mark.parametrize("reset", [False, True])
+def test_proxy_reset_preserves_partial_header_failures(
+    complete: bool, reset: bool
+) -> None:
+    """TCP closure may end a tunnel, but must not hide truncated CONNECT."""
     observed_request = threading.Event()
     original_recv = socket.socket.recv
     request = b""
+    received: dict[socket.socket, bytes] = {}
 
     def observe_recv(sock: socket.socket, *args: Any, **kwargs: Any) -> bytes:
         data = original_recv(sock, *args, **kwargs)
-        if data == request:
+        received[sock] = received.get(sock, b"") + data
+        if received[sock] == request:
             observed_request.set()
         return data
 
@@ -778,15 +785,26 @@ def test_proxy_reset_preserves_partial_header_failures(complete: bool) -> None:
                 client.sendall(request)
                 assert observed_request.wait(5)
                 if complete:
-                    assert client.recv(8192).startswith(b"HTTP/1.1 200")
-                client.setsockopt(
-                    socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
-                )
+                    response = b""
+                    while b"\r\n\r\n" not in response:
+                        chunk = client.recv(8192)
+                        assert chunk
+                        response += chunk
+                        assert len(response) <= 16384
+                    assert response.startswith(b"HTTP/1.1 200")
+                if reset:
+                    client.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                    )
+                else:
+                    client.shutdown(socket.SHUT_WR)
 
     if complete:
         exercise()
     else:
-        with pytest.raises(AssertionError, match="ConnectionResetError"):
+        with pytest.raises(
+            AssertionError, match="ConnectionResetError|Incomplete CONNECT"
+        ):
             exercise()
 
 
