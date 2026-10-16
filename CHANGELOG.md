@@ -15,7 +15,7 @@ Use the existing installation procedure, preserve local configuration and keep t
 
 ### Security
 
-The release gate rejects absent or invalid fuzz evidence and unsafe corpus filesystem properties. No application vulnerability or new target-device acceptance is claimed by these tooling changes.
+RC publication rejects absent or invalid source-bound fuzz reports. The fuzz runner bounds corpus paths, file types and size. No application vulnerability or new target-device acceptance is claimed by these tooling changes.
 
 ## [0.2.5]
 
