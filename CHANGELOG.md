@@ -7,6 +7,7 @@
 - Validate each public release candidate with bounded, network-isolated fuzz campaigns against its exact source revision.
 - Require positive engine execution counts, instrumented production code and validated seed corpora; retain source-bound reports and diagnostic evidence.
 - Run deterministic seed and configuration checks in ordinary CI without starting mutation campaigns on betas.
+- Distinguish expected TLS-rejection connection closure from truncated CONNECT requests in the synthetic proxy test fixture; retain the no-payload-on-rejection assertions.
 
 ### Upgrade
 
@@ -14,7 +15,7 @@ Use the existing installation procedure, preserve local configuration and keep t
 
 ### Security
 
-The release gate rejects absent or invalid fuzz evidence and unsafe seed inputs. No application vulnerability or new target-device acceptance is claimed by these tooling changes.
+The release gate rejects absent or invalid fuzz evidence and unsafe corpus filesystem properties. No application vulnerability or new target-device acceptance is claimed by these tooling changes.
 
 ## [0.2.5]
 
