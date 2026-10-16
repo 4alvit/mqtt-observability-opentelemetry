@@ -120,9 +120,11 @@ checks do not move that anchor. The interval continues across month/year boundar
 can move the anchor forward and prevent an interval schedule from firing.
 Jobs are bounded to 80 minutes. A persistent NFS advisory lock serializes
 scheduled runs, manual runs, cleanup and retention. Each
-application archive creation has a shared 20-minute capture/retry budget. Block
-selection, post-capture block checks and final set verification are covered by
-the overall Job deadline. Recurring
+application archive creation has a shared 20-minute capture/retry budget. For
+block components this same budget starts before selection and includes the
+exclusion walk, archive creation, tar membership checks and final block-set
+verification. Filesystem operations are checked cooperatively; the overall
+Job deadline remains the backstop for blocked I/O. Recurring
 archives use gzip level 1 to reduce CPU time as retained blocks grow; cold
 migration keeps the archive helper's default level 9. Component progress logs
 include elapsed time, byte counts and attempts without exposing archive contents.

@@ -12,7 +12,7 @@ import unittest
 from contextlib import closing, redirect_stdout
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from recovery import backup
 from recovery.backup import (
@@ -64,6 +64,90 @@ class BackupTests(unittest.TestCase):
         self.block("01ARZ3NDEKTSV4RRFFQ69G5FAW", 2, 5)
         with self.assertRaises(ValueError):
             completed_paths("prometheus", self.root)
+
+    def test_block_timeout_includes_initial_selection(self):
+        self.block()
+        clock = [100.0]
+        original_iterdir = Path.iterdir
+
+        def slow_iterdir(path):
+            for entry in original_iterdir(path):
+                clock[0] += backup.COMPONENT_TIMEOUT_SECONDS + 1
+                yield entry
+
+        with patch.object(backup.time, "monotonic", side_effect=lambda: clock[0]), patch.object(
+            Path, "iterdir", slow_iterdir
+        ), patch.object(backup, "create_archive") as capture:
+            with self.assertRaises(TimeoutError):
+                block_archive("prometheus", self.root, self.root / "unused.tar.gz")
+        capture.assert_not_called()
+
+    def test_block_timeout_includes_exclusion_walk(self):
+        self.block()
+        clock = [100.0]
+
+        def slow_walk(*_args, **_kwargs):
+            clock[0] += backup.COMPONENT_TIMEOUT_SECONDS + 1
+            yield str(self.root), [], []
+
+        with patch.object(backup.time, "monotonic", side_effect=lambda: clock[0]), patch.object(
+            backup.os, "walk", side_effect=slow_walk
+        ), patch.object(backup, "create_archive") as capture:
+            with self.assertRaises(TimeoutError):
+                block_archive("prometheus", self.root, self.root / "unused.tar.gz")
+        capture.assert_not_called()
+
+    def test_block_capture_receives_only_remaining_budget(self):
+        self.block()
+        clock = [100.0]
+
+        def delayed_selection(*args, **kwargs):
+            selected = completed_paths(*args, **kwargs)
+            clock[0] += 11
+            return selected
+
+        with tempfile.TemporaryDirectory() as output, patch.object(
+            backup.time, "monotonic", side_effect=lambda: clock[0]
+        ), patch.object(backup, "completed_paths", side_effect=delayed_selection), patch.object(
+            backup, "create_archive", wraps=backup.create_archive
+        ) as capture:
+            block_archive("prometheus", self.root, Path(output) / "archive.tar.gz")
+        self.assertEqual(capture.call_args.kwargs["timeout_seconds"], 1189)
+
+    def test_block_timeout_includes_tar_verification(self):
+        self.assert_block_verification_timeout("tar")
+
+    def test_block_timeout_includes_final_selection(self):
+        self.assert_block_verification_timeout("final-selection")
+
+    def assert_block_verification_timeout(self, phase):
+        self.block()
+        clock = [100.0]
+        selections = []
+
+        def selection(*args, **kwargs):
+            selections.append(kwargs["deadline"])
+            if phase == "final-selection" and len(selections) == 2:
+                clock[0] += backup.COMPONENT_TIMEOUT_SECONDS + 1
+            return completed_paths(*args, **kwargs)
+
+        def members():
+            if phase == "tar":
+                clock[0] += backup.COMPONENT_TIMEOUT_SECONDS + 1
+                yield backup.tarfile.TarInfo(".")
+
+        archive = MagicMock()
+        archive.__enter__.return_value.__iter__.side_effect = members
+        with patch.object(
+            backup.time, "monotonic", side_effect=lambda: clock[0]
+        ), patch.object(
+            backup, "completed_paths", side_effect=selection
+        ), patch.object(backup, "create_archive", return_value={}), patch.object(
+            backup.tarfile, "open", return_value=archive
+        ):
+            with self.assertRaises(TimeoutError):
+                block_archive("prometheus", self.root, self.root / "unused.tar.gz")
+        self.assertTrue(all(value == 1300 for value in selections))
 
     def test_tempo_excludes_wal_partial_compacted_and_index(self):
         blocks = self.root / "blocks"
@@ -189,7 +273,8 @@ class BackupTests(unittest.TestCase):
         calls = {call.args[1].name: call.kwargs for call in capture.call_args_list}
         for service in backup.SERVICES:
             self.assertEqual(calls[service + ".tar.gz"]["compresslevel"], 1)
-            self.assertEqual(calls[service + ".tar.gz"]["timeout_seconds"], 1200)
+            self.assertGreater(calls[service + ".tar.gz"]["timeout_seconds"], 0)
+            self.assertLessEqual(calls[service + ".tar.gz"]["timeout_seconds"], 1200)
             self.assertEqual(calls[service + ".tar.gz"]["memory_file_limit"], 128 * 1024 * 1024)
         self.assertEqual(calls["kubernetes.tar.gz"]["compresslevel"], 1)
         self.assertEqual(calls["kubernetes.tar.gz"]["memory_file_limit"], 128 * 1024 * 1024)

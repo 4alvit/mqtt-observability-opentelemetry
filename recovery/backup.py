@@ -206,11 +206,23 @@ def check_identities(kube, identities):
             raise ValueError("Running application does not use the expected claim")
 
 
-def completed_paths(service, root):
+def _remaining_block_time(deadline):
+    """Share one budget across block selection, capture and verification."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Block component exceeded its time limit")
+    return remaining
+
+
+def completed_paths(service, root, *, deadline=None):
     """Choose only format-recognized immutable blocks; callers validate tar membership."""
+    if deadline is None:
+        deadline = time.monotonic() + COMPONENT_TIMEOUT_SECONDS
+    _remaining_block_time(deadline)
     if service == "prometheus":
         selected, ranges = [], []
         for path in root.iterdir():
+            _remaining_block_time(deadline)
             if (
                 not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", path.name)
                 or not path.is_dir()
@@ -234,13 +246,16 @@ def completed_paths(service, root):
         ordered = sorted(ranges)
         if any(a[1] > b[0] for a, b in pairwise(ordered)):
             raise ValueError("Prometheus compaction is in progress; retry later")
-        return sorted(selected)
+        selected.sort()
+        _remaining_block_time(deadline)
+        return selected
     if service == "tempo":
         selected = []
         blocks = root / "blocks"
         if not blocks.is_dir() or blocks.is_symlink():
             raise ValueError("Tempo blocks directory is missing")
         for tenant in blocks.iterdir():
+            _remaining_block_time(deadline)
             if (
                 tenant.name == "tempo_cluster_seed.json"
                 and tenant.is_file()
@@ -251,6 +266,7 @@ def completed_paths(service, root):
             if not tenant.is_dir() or tenant.is_symlink():
                 continue
             for block in tenant.iterdir():
+                _remaining_block_time(deadline)
                 try:
                     valid = str(uuid.UUID(block.name)) == block.name
                 except ValueError:
@@ -266,7 +282,9 @@ def completed_paths(service, root):
                     if meta.get("blockID") != block.name:
                         raise ValueError("Tempo finalized block identity differs")
                     selected.append("blocks/" + tenant.name + "/" + block.name)
-        return sorted(selected)
+        selected.sort()
+        _remaining_block_time(deadline)
+        return selected
     raise ValueError("Unsupported block service")
 
 
@@ -280,7 +298,8 @@ def validate_grafana_capture(result):
 
 def block_archive(service, root, destination):
     """Archive only completed blocks and reject concurrent layout changes."""
-    selected = completed_paths(service, root)
+    deadline = time.monotonic() + COMPONENT_TIMEOUT_SECONDS
+    selected = completed_paths(service, root, deadline=deadline)
 
     def included(relative):
         """Check the current recovery precondition."""
@@ -293,7 +312,9 @@ def block_archive(service, root, destination):
 
     excludes = []
     for parent, dirs, files in os.walk(root, followlinks=False):
+        _remaining_block_time(deadline)
         for name in list(dirs) + files:
+            _remaining_block_time(deadline)
             relative = str((Path(parent) / name).relative_to(root))
             if not included(relative):
                 excludes.append(relative)
@@ -301,19 +322,23 @@ def block_archive(service, root, destination):
                     dirs.remove(name)
     result = create_archive(
         root, destination, excludes=excludes,
-        timeout_seconds=COMPONENT_TIMEOUT_SECONDS,
+        timeout_seconds=_remaining_block_time(deadline),
         compresslevel=BACKUP_COMPRESSLEVEL,
         memory_file_limit=BACKUP_MEMORY_FILE_LIMIT,
     )
     # A newly created partial/active block must never slip through a stale exclusion list.
+    _remaining_block_time(deadline)
     with tarfile.open(destination, "r:gz") as archive:
         for member in archive:
+            _remaining_block_time(deadline)
             if not included(member.name) or member.issym() or member.islnk():
                 raise ValueError(
                     "Unexpected or linked data appeared during block capture"
                 )
-    if completed_paths(service, root) != selected:
+    _remaining_block_time(deadline)
+    if completed_paths(service, root, deadline=deadline) != selected:
         raise ValueError("Finalized block set changed during capture; retry later")
+    _remaining_block_time(deadline)
     result["completed_block_paths"] = selected
     return result
 
