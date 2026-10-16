@@ -1,5 +1,9 @@
 # Release-candidate fuzz testing
 
+See the [illustrated RC fuzzing process and verified rollout results](https://github.com/victron-venus/venus-os-ci-toolkit/blob/main/docs/rc-fuzzing-results.md)
+for the shared release flow, evidence requirements and a dated cross-project
+snapshot. The project-specific scope and reproduction guidance below still apply.
+
 ## Scope and assertions
 
 **trace-config.** The real interceptor trace-configuration validators receive synthetic JSON and comma/JSON topic specifications. Accepted sampling rates must remain finite and bounded, topic values typed, and serialization stable. No proxy listener, MQTT connection or exporter is started.
