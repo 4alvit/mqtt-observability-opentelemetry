@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.7] - 2026-10-17
+
+### Changed
+
+- Clarify where RC fuzz safeguards execute and add illustrated process and result guides.
+- Keep the interceptor and exporter version metadata synchronized for this release cycle.
+
+### Upgrade
+
+Runtime behavior and configuration remain unchanged from 0.2.6. Preserve broker credentials, collector endpoints and persistent monitoring data; retain the previously accepted artifacts for rollback.
+
+### Security
+
+No new runtime security fix is claimed. Existing TLS checks and source-bound RC fuzzing remain required; publication does not change any running monitoring deployment.
+
 ## [0.2.6] - 2026-10-14
 
 ### Changed
