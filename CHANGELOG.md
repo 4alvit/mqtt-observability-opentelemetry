@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.8] - 2026-10-18
+
+### Changed
+
+- Refresh the synthetic Grafana dashboard preview and pinned review, merge and RC fuzzing workflows.
+
+### Upgrade
+
+Preserve installation-specific configuration and retain the previous immutable release for rollback. Required CI and source-bound RC qualification remain enabled. Publishing this release does not deploy it to an installation or establish hardware acceptance.
+
+### Security
+
+Broker credentials, collector TLS verification and persistent monitoring data remain protected by the existing configuration. No new runtime security fix is claimed.
+
 ## [0.2.7] - 2026-10-17
 
 ### Changed
