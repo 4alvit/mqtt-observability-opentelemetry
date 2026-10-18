@@ -17,6 +17,10 @@
 
 A complete observability stack for MQTT-based IoT systems.
 
+![MQTT Broker Overview rendered in Grafana with synthetic demonstration data, shown in perspective.](docs/screenshots/mqtt-hero.png)
+
+Actual Grafana dashboard layout · synthetic demo readings · [Flat screenshot](docs/screenshots/mqtt-overview.jpg) · [Capture and rendering](docs/screenshots/README.md)
+
 For a TLS-protected collector, follow the explicit
 [OTLP HTTP/protobuf migration and certificate policy](docs/otlp-transport.md).
 The local plaintext gRPC demo remains available.
