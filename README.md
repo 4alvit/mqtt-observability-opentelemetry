@@ -77,14 +77,21 @@ MQTT 5 user properties becomes the consumer span's remote parent.
 
 ## Developing
 
+Use the [lockfile-based local CI gates](CONTRIBUTING.md#development-and-validation)
+for component validation plus recovery, deployment, and TLS checks. Run the
+following focused checks from the repository root:
+
 ```bash
 # Install dependencies
 pip install -e mqtt-interceptor[dev]
 pip install -e mosquitto-exporter[dev]
 
-# Run tests
+# Run component tests
 pytest mqtt-interceptor/tests/
 pytest mosquitto-exporter/tests/
+
+# Scorecard validator regressions (standard library only)
+python3 -m unittest discover -s tests -p test_validate_scorecard_json.py
 
 # Lint
 ruff check mqtt-interceptor/ mosquitto-exporter/
