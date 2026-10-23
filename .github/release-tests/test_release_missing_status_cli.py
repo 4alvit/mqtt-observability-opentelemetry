@@ -142,7 +142,7 @@ class MissingResourceStatusTests(unittest.TestCase):
                 "path": ".github/workflows/release-pipeline.yml", "event": "workflow_dispatch",
                 "status": "in_progress", "conclusion": None,
             },
-            "actions/runs/17/attempts/1/jobs?per_page=100": [{"jobs": [{
+            "actions/runs/17/attempts/1/jobs?per_page=20": [{"jobs": [{
                 "name": "Release gate", "status": "completed", "conclusion": "success", "head_sha": sha,
             }]}],
             "contents/.release-policy.json?ref=" + sha: {
