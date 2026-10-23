@@ -19,6 +19,10 @@ this release does not deploy the artifacts or change the active runner mode.
 
 ### Security
 
+Update the bundled uv installer to 0.13.4 in both component images to remove
+the distrusted emSign ECC Root CA - G3 from its embedded trust store. Rebuild
+the images to receive this correction; component dependency locks are unchanged.
+
 Update certifi from 2026.7.22 to 2026.10.19 in both component lockfiles. The new
 bundle removes the distrusted emSign ECC Root CA - G3 described in
 [GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2).
