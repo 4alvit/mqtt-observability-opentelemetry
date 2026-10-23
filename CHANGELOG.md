@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.9]
+
+### Changed
+
+- Synchronize the interceptor and exporter release base at 0.2.9.
+- Allow up to five minutes for GitHub's aggregate workflow status to catch up while preserving the exact source, run attempt and required-check gates.
+- Reject incomplete Scorecard checks, refresh pinned CI actions, document local validation and prepare the reviewed ARC standby runner routing.
+
+### Upgrade
+
+Update both Python components together using the existing installation procedure.
+Preserve broker credentials, collector endpoints and persistent monitoring data,
+and retain the previous immutable artifacts for rollback. Endpoints that relied
+on the removed emSign ECC Root CA - G3 need a certificate chain rooted in a
+trusted CA; do not disable TLS verification to retain the old chain. Publishing
+this release does not deploy the artifacts or change the active runner mode.
+
+### Security
+
+Update certifi from 2026.7.22 to 2026.10.19 in both component lockfiles. The new
+bundle removes the distrusted emSign ECC Root CA - G3 described in
+[GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2).
+The existing TLS trust, hostname and certificate-key checks remain required.
+
 ## [0.2.8] - 2026-10-18
 
 ### Changed
