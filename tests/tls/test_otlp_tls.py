@@ -269,6 +269,48 @@ def calibrate(chain: tuple[Path, Path, Path], version: ssl.TLSVersion) -> None:
     assert observed["tls"] == version.name.replace("_", ".")
 
 
+def export_signal(
+    exporter: Any, transport: Any, marker: str, errors: list[Any] | None = None
+) -> str:
+    """Use the public SDK exporter while observing, not replacing, TLS failures."""
+    send = transport._HTTPSOnlySession.send
+
+    def observe(session: Any, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return send(session, *args, **kwargs)
+        except requests.RequestException as error:
+            if errors is not None:
+                errors.append(error)
+            raise
+
+    with patch.object(transport._HTTPSOnlySession, "send", observe):
+        return exporter.export(signal_data(transport, marker)).name
+
+
+def exported_markers(request: bytes, transport: Any) -> list[str]:
+    """Decode actual OTLP bytes for both supported signal types."""
+    _, separator, body = request.partition(b"\r\n\r\n")
+    assert separator
+    if transport.__name__.startswith("mqtt_interceptor"):
+        from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+            ExportTraceServiceRequest,
+        )
+
+        resources = ExportTraceServiceRequest.FromString(body).resource_spans
+    else:
+        from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+            ExportMetricsServiceRequest,
+        )
+
+        resources = ExportMetricsServiceRequest.FromString(body).resource_metrics
+    return [
+        attribute.value.string_value
+        for resource in resources
+        for attribute in resource.resource.attributes
+        if attribute.key == "test.marker"
+    ]
+
+
 @pytest.mark.parametrize("version", [ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3])
 @pytest.mark.parametrize("case", [*CHAIN_CASES, "untrusted", "wrong-host"])
 def test_actual_exporter_verifies_entire_chain_before_sending(
@@ -287,20 +329,26 @@ def test_actual_exporter_verifies_entire_chain_before_sending(
     )
     with peer(chain, version) as (port, observed):
         host = "127.0.0.1" if case == "wrong-host" else "localhost"
-        exporter: Any = transport.create_exporter(f"https://{host}:{port}")
+        exporter: Any = transport.create_exporter(f"https://{host}:{port}", timeout=0.5)
         try:
             if case.startswith("strong"):
-                response = exporter._export(b"synthetic-span")
-                assert response.status_code == 200
-                response.close()
+                assert export_signal(exporter, transport, "synthetic-span") == "SUCCESS"
             else:
-                with pytest.raises(requests.exceptions.SSLError):
-                    exporter._export(b"synthetic-span")
+                errors: list[Any] = []
+                assert (
+                    export_signal(exporter, transport, "synthetic-span", errors)
+                    == "FAILURE"
+                )
+                assert errors and all(
+                    isinstance(error, requests.exceptions.SSLError) for error in errors
+                )
         finally:
             exporter.shutdown()
     if case.startswith("strong"):
         assert b"authorization: Bearer synthetic-only" in observed["application_bytes"]
-        assert observed["application_bytes"].endswith(b"synthetic-span")
+        assert exported_markers(observed["application_bytes"], transport) == [
+            "synthetic-span"
+        ]
         assert observed["tls"] == version.name.replace("_", ".")
     else:
         assert observed["application_bytes"] == b""
@@ -324,12 +372,18 @@ def test_redirect_does_not_send_auth_or_body_to_plaintext_target(
             port,
             _,
         ):
-            exporter: Any = transport.create_exporter(f"https://localhost:{port}")
+            exporter: Any = transport.create_exporter(
+                f"https://localhost:{port}", timeout=0.5
+            )
             try:
-                with pytest.raises(
-                    requests.RequestException, match="redirects are disabled"
-                ):
-                    exporter._export(b"synthetic-span")
+                errors: list[Any] = []
+                assert (
+                    export_signal(exporter, transport, "synthetic-span", errors)
+                    == "FAILURE"
+                )
+                assert errors and all(
+                    "redirects are disabled" in str(error) for error in errors
+                )
             finally:
                 exporter.shutdown()
         with pytest.raises(TimeoutError):
@@ -352,14 +406,14 @@ def test_standard_client_certificate_configuration_is_preserved(
         port,
         observed,
     ):
-        exporter: Any = transport.create_exporter(f"https://localhost:{port}")
+        exporter: Any = transport.create_exporter(
+            f"https://localhost:{port}", timeout=0.5
+        )
         try:
-            response = exporter._export(b"mutual-tls")
-            assert response.status_code == 200
-            response.close()
+            assert export_signal(exporter, transport, "mutual-tls") == "SUCCESS"
         finally:
             exporter.shutdown()
-    assert observed["application_bytes"].endswith(b"mutual-tls")
+    assert exported_markers(observed["application_bytes"], transport) == ["mutual-tls"]
 
 
 @pytest.fixture(scope="module")
@@ -423,14 +477,16 @@ def test_exact_client_key_boundary_before_http(
 ) -> None:
     configure_client_files(client_chains, "strong", combined, tmp_path, monkeypatch)
     with peer(client_chains["server"], version, client_auth=True) as (port, observed):
-        exporter: Any = transport.create_exporter(f"https://localhost:{port}")
+        exporter: Any = transport.create_exporter(
+            f"https://localhost:{port}", timeout=0.5
+        )
         try:
-            response = exporter._export(b"strong-client-span")
-            assert response.status_code == 200
-            response.close()
+            assert export_signal(exporter, transport, "strong-client-span") == "SUCCESS"
         finally:
             exporter.shutdown()
-    assert observed["application_bytes"].endswith(b"strong-client-span")
+    assert exported_markers(observed["application_bytes"], transport) == [
+        "strong-client-span"
+    ]
     assert observed["client_certificate"] == client_chains["certificates"][
         "strong"
     ].public_bytes(serialization.Encoding.DER)
@@ -444,11 +500,17 @@ def test_exact_client_key_boundary_before_http(
         listener.listen(1)
         listener.settimeout(0.1)
         exporter = transport.create_exporter(
-            f"https://localhost:{listener.getsockname()[1]}"
+            f"https://localhost:{listener.getsockname()[1]}", timeout=0.5
         )
         try:
-            with pytest.raises(requests.exceptions.SSLError):
-                exporter._export(b"must-not-leave")
+            errors: list[Any] = []
+            assert (
+                export_signal(exporter, transport, "must-not-leave", errors)
+                == "FAILURE"
+            )
+            assert errors and all(
+                isinstance(error, requests.exceptions.SSLError) for error in errors
+            )
         finally:
             exporter.shutdown()
         with pytest.raises(TimeoutError):
@@ -494,11 +556,15 @@ def test_client_snapshot_survives_original_replacement_and_is_cleaned(
         port,
         observed,
     ):
-        exporter: Any = transport.create_exporter(f"https://localhost:{port}")
+        exporter: Any = transport.create_exporter(
+            f"https://localhost:{port}", timeout=0.5
+        )
         try:
             with patch.object(ssl.SSLContext, "load_cert_chain", replace_original):
-                response = exporter._export(b"snapshot-client-span")
-                response.close()
+                assert (
+                    export_signal(exporter, transport, "snapshot-client-span")
+                    == "SUCCESS"
+                )
         finally:
             exporter.shutdown()
     assert observed["client_certificate"] == client_chains["certificates"][
@@ -830,23 +896,32 @@ def test_proxy_cannot_bypass_origin_chain_policy(
     ):
         scheme = "https" if encrypted_proxy else "http"
         monkeypatch.setenv("HTTPS_PROXY", f"{scheme}://localhost:{proxy_port}")
-        exporter: Any = transport.create_exporter(f"https://localhost:{port}")
+        exporter: Any = transport.create_exporter(
+            f"https://localhost:{port}", timeout=0.5
+        )
         try:
             if case == "strong":
-                response = exporter._export(b"proxy-span")
-                assert response.status_code == 200
-                response.close()
+                assert export_signal(exporter, transport, "proxy-span") == "SUCCESS"
             else:
-                with pytest.raises(
-                    requests.exceptions.ProxyError, match="OTLP HTTPS transport failed"
-                ) as rejected:
-                    exporter._export(b"proxy-span")
-                assert "security minimum" in str(rejected.value.__context__)
+                errors: list[Any] = []
+                assert (
+                    export_signal(exporter, transport, "proxy-span", errors)
+                    == "FAILURE"
+                )
+                assert errors and all(
+                    isinstance(error, requests.exceptions.ProxyError)
+                    for error in errors
+                )
+                assert all(
+                    "security minimum" in str(error.__context__) for error in errors
+                )
         finally:
             exporter.shutdown()
     assert len(observed) == (1 if case == "strong" else 2)
     if case == "strong":
-        assert received["application_bytes"].endswith(b"proxy-span")
+        assert exported_markers(received["application_bytes"], transport) == [
+            "proxy-span"
+        ]
     else:
         assert received["application_bytes"] == b""
 
@@ -862,13 +937,17 @@ def test_weak_https_proxy_rejected_before_connect_request(
     # No origin server is needed: the unaccepted proxy must not receive CONNECT.
     with proxy(1, chains["weak-2047-root"]) as (port, observed):
         monkeypatch.setenv("HTTPS_PROXY", f"https://localhost:{port}")
-        exporter: Any = transport.create_exporter("https://localhost:1")
+        exporter: Any = transport.create_exporter("https://localhost:1", timeout=0.5)
         try:
-            with pytest.raises(
-                requests.exceptions.ProxyError, match="OTLP HTTPS transport failed"
-            ) as rejected:
-                exporter._export(b"must-not-leave")
-            assert "security minimum" in str(rejected.value.__context__)
+            errors: list[Any] = []
+            assert (
+                export_signal(exporter, transport, "must-not-leave", errors)
+                == "FAILURE"
+            )
+            assert errors and all(
+                isinstance(error, requests.exceptions.ProxyError) for error in errors
+            )
+            assert all("security minimum" in str(error.__context__) for error in errors)
         finally:
             exporter.shutdown()
     assert observed == []
@@ -894,11 +973,13 @@ def test_public_der_chain_api_also_checks_exact_bits(
             transport._verify_key_lengths(sock)
 
 
-def signal_data(transport: Any) -> Any:
+def signal_data(transport: Any, marker: str = "synthetic-operation") -> Any:
     """Produce SDK data without registering a global provider or background worker."""
     from opentelemetry.sdk.resources import Resource
 
-    resource = Resource.create({"service.name": "synthetic-wire-proof"})
+    resource = Resource.create(
+        {"service.name": "synthetic-wire-proof", "test.marker": marker}
+    )
     if transport.__name__.startswith("mqtt_interceptor"):
         from opentelemetry.sdk.trace import ReadableSpan
         from opentelemetry.trace import SpanContext, TraceFlags
@@ -1014,16 +1095,18 @@ def test_no_proxy_preserves_direct_verified_connection(
         )
         monkeypatch.setenv("NO_PROXY", "localhost")
         with peer(chains["strong"], ssl.TLSVersion.TLSv1_3) as (port, observed):
-            exporter = transport.create_exporter(f"https://localhost:{port}")
+            exporter = transport.create_exporter(
+                f"https://localhost:{port}", timeout=0.5
+            )
             try:
-                response = exporter._export(b"direct-request")
-                assert response.status_code == 200
-                response.close()
+                assert export_signal(exporter, transport, "direct-request") == "SUCCESS"
             finally:
                 exporter.shutdown()
         with pytest.raises(TimeoutError):
             unused_proxy.accept()
-    assert observed["application_bytes"].endswith(b"direct-request")
+    assert exported_markers(observed["application_bytes"], transport) == [
+        "direct-request"
+    ]
 
 
 def test_metric_reader_retains_sdk_delta_temporality_on_wire(

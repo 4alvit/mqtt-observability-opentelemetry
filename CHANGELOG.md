@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.10]
+
+### Changed
+
+- Update the API, SDK and OTLP exporters together to the compatible OpenTelemetry 1.45.1 family; synchronize both component release versions.
+- Bound MQTT tracestate to 8192 characters before parsing; preserve the valid parent span when discarding oversized state.
+- Add inbound metadata regression checks for normal, boundary-size and oversized tracestate values.
+
+### Upgrade
+
+Install the new package or container through the existing release procedure. Preserve local configuration and credentials, and retain the previous immutable artifacts for rollback. Publishing this release does not deploy it.
+
+### Security
+
+Fix [GHSA-xcq7-p3pf-p88h](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), an availability issue caused by unbounded tracestate parsing in OpenTelemetry API through 1.45.0. The interceptor parses W3C tracestate supplied in MQTT user properties. The patched parser bounds oversized metadata while retaining valid parent trace context.
+
 ## [0.2.9]
 
 ### Changed
