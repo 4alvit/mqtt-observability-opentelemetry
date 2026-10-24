@@ -56,6 +56,7 @@ class TraceContextPropagator:
 
     TRACEPARENT_KEY = "traceparent"
     TRACESTATE_KEY = "tracestate"
+    MAX_TRACESTATE_LENGTH = 8192
 
     def __init__(self, propagator_type: str = "w3c"):
         self.propagator_type = propagator_type
@@ -96,7 +97,11 @@ class TraceContextPropagator:
 
             version, trace_id, parent_id, flags = parts
             trace_flags = TraceFlags(int(flags, 16))
-            trace_state = TraceState.from_header([tracestate]) if tracestate else TraceState()
+            trace_state = (
+                TraceState.from_header([tracestate])
+                if tracestate and len(tracestate) <= self.MAX_TRACESTATE_LENGTH
+                else TraceState()
+            )
 
             span_context = trace.SpanContext(
                 trace_id=int(trace_id, 16),

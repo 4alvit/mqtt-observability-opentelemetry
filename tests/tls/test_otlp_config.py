@@ -95,6 +95,21 @@ def test_signal_endpoint_precedence_headers_and_component_timeout(
         monkeypatch.setenv(
             f"OTEL_EXPORTER_OTLP_{name}_ENDPOINT", "https://signal.example/exact"
         )
+    from test_otlp_tls import signal_data
+
+    observed = []
+
+    def send(session, request, **options):
+        import requests
+
+        observed.append((request, options))
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b""
+        response.request = request
+        return response
+
+    monkeypatch.setattr("requests.Session.send", send)
     exporter = transport.create_exporter("https://component.example/prefix/", False, 7)
     try:
         expected = (
@@ -102,10 +117,13 @@ def test_signal_endpoint_precedence_headers_and_component_timeout(
             if specific
             else ("https://component.example/prefix/v1/" + name.lower())
         )
-        assert exporter._endpoint == expected
-        assert exporter._timeout == 7
-        assert exporter._session.headers["x-signal"] == "selected"
-        assert "x-common" not in exporter._session.headers
+        assert exporter.export(signal_data(transport)).name == "SUCCESS"
+        assert len(observed) == 1
+        request, options = observed[0]
+        assert request.url == expected
+        assert 0 < options["timeout"] <= 7
+        assert request.headers["x-signal"] == "selected"
+        assert "x-common" not in request.headers
     finally:
         exporter.shutdown()
 
