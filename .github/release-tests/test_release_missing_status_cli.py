@@ -30,24 +30,29 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 root = Path(os.environ["FAKE_GH_ROOT"])
 config = json.loads((root / "responses.json").read_text())
 state_path = root / "remote.json"
 state = json.loads(state_path.read_text())
 args = sys.argv[1:]
-if args[:2] == ["release", "upload"]:
-    method, path = "UPLOAD", args[-2]
-    asset = Path(args[-1])
-    data = asset.read_bytes()
-    state["assets"].append({"id": len(state["assets"]) + 1, "name": asset.name,
-                            "size": len(data), "state": "uploaded",
-                            "content": base64.b64encode(data).decode()})
-    payload = b""
+assert args[0] == "api" and args[args.index("--hostname") + 1] == "github.com"
+method = args[args.index("--method") + 1]
+endpoint = args[args.index("--") + 1]
+upload = endpoint.startswith("https://uploads.github.com/")
+if upload:
+    parsed = urlsplit(endpoint)
+    assert method == "POST" and parsed.netloc == "uploads.github.com"
+    assert parsed.path == "/repos/example/project/releases/10/assets"
+    assert "--include" in args and "Content-Type: application/octet-stream" in args
+    query = parse_qs(parsed.query, strict_parsing=True)
+    assert set(query) == {"name"} and len(query["name"]) == 1
+    asset = Path(args[args.index("--input") + 1])
+    assert asset.name == query["name"][0]
+    path = parsed.path.removeprefix("/repos/example/project/") + "?" + parsed.query
+    body = None
 else:
-    assert args[0] == "api" and args[args.index("--hostname") + 1] == "github.com"
-    method = args[args.index("--method") + 1]
-    endpoint = args[args.index("--") + 1]
     assert endpoint.startswith("repos/example/project")
     path = endpoint.removeprefix("repos/example/project").lstrip("/")
     body = json.load(sys.stdin) if "--input" in args else None
@@ -79,6 +84,16 @@ if method == "GET":
         payload = b'{"message":"Not Found"}'
     else:
         raise AssertionError("Unexpected GET: " + path)
+elif upload:
+    assert state["releases"][-1]["id"] == 10 and state["releases"][-1]["draft"]
+    data = asset.read_bytes()
+    record = {"id": len(state["assets"]) + 1, "name": asset.name,
+              "size": len(data), "state": "uploaded",
+              "content": base64.b64encode(data).decode()}
+    assert not any(existing["name"] == asset.name for existing in state["assets"])
+    state["assets"].append(record)
+    status = 201
+    payload = json.dumps(record).encode()
 elif method == "POST" and path == "git/refs":
     state["refs"].append(body)
     payload = json.dumps(body).encode()
@@ -91,7 +106,7 @@ elif method == "PATCH" and path == "releases/10":
 elif method == "PUT" and path == "contents/release-version-state.json":
     state["ledger"] = json.loads(base64.b64decode(body["content"]))
     payload = b'{"content":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}'
-elif method != "UPLOAD":
+else:
     raise AssertionError("Unexpected mutation: " + method + " " + path)
 
 state_path.write_text(json.dumps(state))
