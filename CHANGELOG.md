@@ -7,6 +7,7 @@
 - Run the interceptor and exporter containers on Python 3.15 with compatible grpcio 1.85.1, Pydantic 2.14.2 and pydantic-core 2.50.2 locks.
 - Preserve complete frozen dependency graphs for both components and refresh the pinned container build inputs.
 - Handle the legitimate early-close path in the TLS rejection smoke test while continuing to reject unexpected timeouts and accepted invalid clients.
+- Recognize the expected CONNECT tunnel reset after rejecting a weak origin certificate in recovery acceptance; preserve strict positive-path and worker-error checks.
 
 ### Upgrade
 
