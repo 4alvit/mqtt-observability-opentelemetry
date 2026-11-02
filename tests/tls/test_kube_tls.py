@@ -35,7 +35,7 @@ import ssl
 import threading
 import urllib.error
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -292,7 +292,10 @@ def calibrate(chain: tuple[Path, Path, Path], version: ssl.TLSVersion) -> None:
 
 @contextmanager
 def proxy(
-    target_port: int, chain: tuple[Path, Path, Path] | None
+    target_port: int,
+    chain: tuple[Path, Path, Path] | None,
+    *,
+    expect_origin_rejection: bool = False,
 ) -> Iterator[tuple[int, list[bytes]]]:
     """A bounded CONNECT relay whose only permitted destination is our loopback peer."""
     observed: list[bytes] = []
@@ -349,7 +352,12 @@ def proxy(
             except ssl.SSLError:
                 pass
             except (ConnectionResetError, BrokenPipeError) as error:
-                if observed:
+                # Rejecting the origin certificate can abort an established
+                # tunnel while the relay still has TLS bytes to forward. The
+                # caller separately asserts the exact policy error and that no
+                # application bytes reached the origin. Positive cases remain
+                # strict; timeouts and other worker failures always propagate.
+                if observed and not expect_origin_rejection:
                     errors.append(error)
             # pylint: disable-next=broad-exception-caught
             except Exception as error:  # noqa: BLE001
@@ -364,6 +372,48 @@ def proxy(
             thread.join(6)
             assert not thread.is_alive()
             assert not errors, errors
+
+
+@pytest.mark.parametrize(
+    ("expect_rejection", "failure", "must_raise"),
+    [
+        (False, ConnectionResetError, True),
+        (False, BrokenPipeError, True),
+        (True, ConnectionResetError, False),
+        (True, BrokenPipeError, False),
+        (True, TimeoutError, True),
+        (True, RuntimeError, True),
+    ],
+)
+def test_proxy_shutdown_error_policy(
+    monkeypatch, expect_rejection, failure, must_raise
+):
+    """Reproduce a worker abort after CONNECT, retaining unexpected failures."""
+
+    def fail_relay(*_args):
+        raise failure("synthetic relay failure")
+
+    monkeypatch.setattr(select, "select", fail_relay)
+    with socket.socket() as target:
+        target.bind(("127.0.0.1", 0))
+        target.listen(1)
+        port = target.getsockname()[1]
+        outcome = (
+            pytest.raises(AssertionError, match="synthetic relay failure")
+            if must_raise
+            else nullcontext()
+        )
+        with outcome:
+            with proxy(port, None, expect_origin_rejection=expect_rejection) as result:
+                proxy_port, observed = result
+                with socket.create_connection(
+                    ("127.0.0.1", proxy_port), timeout=5
+                ) as client:
+                    client.sendall(
+                        f"CONNECT localhost:{port} HTTP/1.1\r\n\r\n".encode()
+                    )
+                    assert client.recv(8192).startswith(b"HTTP/1.1 200 ")
+            assert len(observed) == 1
 
 
 def actual_client(tmp_path, monkeypatch, ca, host, port):
@@ -491,7 +541,10 @@ def test_http_proxy_preserves_origin_chain_policy(tmp_path, monkeypatch, chains,
     # Split dependent contexts so pylint can see where the tunnel port is bound.
     with peer(chain, ssl.TLSVersion.TLSv1_3, response_body=b"{}") as peer_result:
         port, received = peer_result
-        with proxy(port, None) as (proxy_port, observed):
+        with proxy(port, None, expect_origin_rejection=case != "strong") as (
+            proxy_port,
+            observed,
+        ):
             monkeypatch.setenv("HTTPS_PROXY", f"http://localhost:{proxy_port}")
             client = actual_client(tmp_path, monkeypatch, chain[2], "localhost", port)
             if case == "strong":
