@@ -10,9 +10,9 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 import pytest
-from test_otlp_tls import CHAIN_CASES, chains as chains
-
 from mosquitto_exporter.mqtt_tls import broker_tls_context
+from test_otlp_tls import CHAIN_CASES
+from test_otlp_tls import chains as chains
 
 
 @contextmanager
@@ -37,7 +37,7 @@ def broker_peer(
                     raw.settimeout(5)
                     with context.wrap_socket(raw, server_side=True) as connection:
                         result["application_bytes"] = connection.recv(8192)
-            except (ssl.SSLError, ConnectionResetError):
+            except (ssl.SSLError, ConnectionResetError, BrokenPipeError):
                 pass
             except Exception as error:
                 result["error"] = repr(error)
@@ -50,6 +50,29 @@ def broker_peer(
             worker.join(7)
             assert not worker.is_alive()
             assert "error" not in result, result
+
+
+@pytest.mark.parametrize("error_type", [ConnectionResetError, BrokenPipeError])
+def test_broker_peer_accepts_rejected_handshake_disconnect(chains, monkeypatch, error_type):
+    def reject_handshake(*args, **kwargs):
+        raise error_type("peer closed during handshake")
+
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", reject_handshake)
+    with broker_peer(chains["strong"], ssl.TLSVersion.TLSv1_3) as (port, result):
+        with socket.create_connection(("127.0.0.1", port), timeout=5):
+            pass
+    assert result["application_bytes"] == b""
+
+
+def test_broker_peer_does_not_hide_unexpected_socket_failures(chains, monkeypatch):
+    def fail_handshake(*args, **kwargs):
+        raise TimeoutError("unexpected handshake timeout")
+
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", fail_handshake)
+    with pytest.raises(AssertionError, match="unexpected handshake timeout"):
+        with broker_peer(chains["strong"], ssl.TLSVersion.TLSv1_3) as (port, _result):
+            with socket.create_connection(("127.0.0.1", port), timeout=5):
+                pass
 
 
 @pytest.mark.parametrize("case", CHAIN_CASES)
