@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.11]
+
+### Changed
+
+- Run the interceptor and exporter containers on Python 3.15 with compatible grpcio 1.85.1, Pydantic 2.14.2 and pydantic-core 2.50.2 locks.
+- Preserve complete frozen dependency graphs for both components and refresh the pinned container build inputs.
+- Handle the legitimate early-close path in the TLS rejection smoke test while continuing to reject unexpected timeouts and accepted invalid clients.
+
+### Upgrade
+
+Update both components together using the existing package or container procedure. Preserve local broker credentials, collector endpoints and persistent monitoring data. Publishing this release does not deploy it.
+
+### Security
+
+TLS certificate verification and the existing security checks remain enabled. This release does not claim a new advisory fix beyond the previously released OpenTelemetry and certificate-store corrections.
+
 ## [0.2.10]
 
 ### Changed
