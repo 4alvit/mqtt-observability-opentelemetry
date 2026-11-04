@@ -1,9 +1,13 @@
 """Focused canonical release GET/freshness backport tests; no live requests."""
 
+import gc
 import importlib.util
 import os
-import subprocess
+
+# Only constructs completed-process and timeout fixtures; execution is mocked.
+import subprocess  # nosec B404
 import unittest
+import weakref
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -28,12 +32,50 @@ def http_response(status=0, stdout=b"{}", error_format="gh: API failed (HTTP {st
 
 
 class WholeReadRecoveryTests(unittest.TestCase):
+    """Bounded complete reads recover only from recognized transport failures."""
+
     def setUp(self):
+        self.enterContext(patch.dict(os.environ, {"RELEASE_REQUIRE_WORKFLOW_SCOPE": ""}))
         self.gh = rc.GitHub(REPO)
 
     @staticmethod
     def failed(stderr=b"unexpected EOF", stdout=b"", code=1):
         return subprocess.CompletedProcess([], code, stdout, stderr)
+
+    def test_retry_releases_failed_response_before_waiting_or_recapturing(self):
+        def check_case(path, status, framed):
+            previous = []
+
+            def assert_released(*_args):
+                gc.collect()
+                self.assertTrue(previous[0]() is None, "failed stdout is still retained")
+
+            def capture(*_args, **_kwargs):
+                if previous:
+                    assert_released()
+                    return http_response(stdout=b"COMPLETE")
+                payload = b"x" * (1024 * 1024)
+                if framed:
+                    payload = f"HTTP/2.0 {status} Test\r\n\r\n".encode() + payload
+                failed = self.failed(stdout=payload)
+                previous.append(weakref.ref(failed))
+                return failed
+
+            with (
+                patch.object(rc.subprocess, "run", side_effect=capture) as run,
+                patch.object(rc.time, "sleep", side_effect=assert_released) as sleep,
+            ):
+                self.assertEqual(self.gh.binary(path), b"COMPLETE")
+                self.assertEqual(run.call_count, 2)
+                sleep.assert_called_once()
+
+        for path, status, framed in (
+            ("releases/assets/7", 200, True),
+            ("actions/artifacts/7/zip", 503, True),
+            ("releases/assets/7", 200, False),
+        ):
+            with self.subTest(path=path, status=status, framed=framed):
+                check_case(path, status, framed)
 
     def test_known_transport_losses_retry_whole_metadata_response(self):
         for message in (
@@ -130,8 +172,31 @@ class WholeReadRecoveryTests(unittest.TestCase):
                     self.gh.binary("releases/assets/7")
                 run.assert_called_once()
 
+    def test_setup_isolates_and_restores_publication_probe_environment(self):
+        """An inherited publication setting must never trigger a live probe."""
+        case = type(self)()
+        with (
+            patch.dict(os.environ, {"RELEASE_REQUIRE_WORKFLOW_SCOPE": "true"}),
+            patch.object(
+                rc.GitHub,
+                "verify_publication_permissions",
+                side_effect=AssertionError("live probe"),
+            ) as probe,
+        ):
+            try:
+                case.setUp()
+                probe.assert_not_called()
+                self.assertEqual(os.environ["RELEASE_REQUIRE_WORKFLOW_SCOPE"], "")
+            finally:
+                case.doCleanups()
+            self.assertEqual(os.environ["RELEASE_REQUIRE_WORKFLOW_SCOPE"], "true")
+
     def test_auth_certificate_and_partial_denials_veto_transport_retry(self):
         for message in (
+            b"Unauthorized; unexpected EOF",
+            b"unauthorised; i/o timeout",
+            b"authorization failed; EOF",
+            b"UNAUTHORIZED; unexpected EOF",
             b"requires authentication; unexpected EOF",
             b"bad credentials; i/o timeout",
             b"x509 certificate error; unexpected EOF",
@@ -204,6 +269,8 @@ class WholeReadRecoveryTests(unittest.TestCase):
 
 
 class CurrentAttemptFreshnessTests(unittest.TestCase):
+    """Successful retry evidence must belong to the exact current attempt."""
+
     def setUp(self):
         self.detail = {
             "id": 123,
@@ -382,6 +449,8 @@ class CurrentAttemptFreshnessTests(unittest.TestCase):
 
 
 class AttemptRouteTests(unittest.TestCase):
+    """Attempt metadata reads never broaden the allowed GitHub API surface."""
+
     def test_attempt_detail_route_rejects_invalid_ids_and_write_methods(self):
         """The added metadata route grants no write, query or traversal surface."""
         with patch.dict(os.environ, {"RELEASE_REQUIRE_WORKFLOW_SCOPE": ""}):
@@ -418,6 +487,8 @@ class AttemptRouteTests(unittest.TestCase):
 
 
 class GateIntegrationTests(unittest.TestCase):
+    """Publication gates reject stale evidence through the real integration path."""
+
     def test_gate_rejects_cloned_validation_and_accepts_fresh_execution(self):
         detail = {
             "id": 123,
