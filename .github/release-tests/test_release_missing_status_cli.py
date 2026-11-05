@@ -69,8 +69,13 @@ if [method, path] == failure.get("request"):
 
 status = 200
 if method == "GET":
+    created_ref = next((ref for ref in state["refs"]
+                        if path == "git/ref/" + ref["ref"].removeprefix("refs/")), None)
     if path in config["responses"]:
         payload = json.dumps(config["responses"][path]).encode()
+    elif created_ref is not None:
+        payload = json.dumps({"ref": created_ref["ref"],
+                              "object": {"type": "commit", "sha": created_ref["sha"]}}).encode()
     elif path == "releases/10/assets?per_page=100":
         payload = json.dumps([state["assets"]]).encode()
     elif path.startswith("releases/assets/"):
