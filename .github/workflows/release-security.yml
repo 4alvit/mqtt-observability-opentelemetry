@@ -25,7 +25,7 @@ jobs:
         run: uvx --python 3.12 --from bandit==1.8.6 python -m unittest discover -s .github/security-tests -p test_bandit_discovery.py -v
       - run: bash scripts/ci.sh bandit
       - name: Block high and critical dependencies, secrets and misconfiguration
-        uses: aquasecurity/trivy-action@8f28faec26515256b6d22074d1d2a8986f4cbd87 # master
+        uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec # master
         with:
           scan-type: fs
           scan-ref: .
