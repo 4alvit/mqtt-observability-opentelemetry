@@ -1,6 +1,99 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "local>victron-venus/venus-os-ci-toolkit:renovate-ci"
+    "local>victron-venus/venus-os-ci-toolkit:renovate-fleet"
+  ],
+  "enabledManagers": [
+    "github-actions",
+    "custom.regex",
+    "custom.jsonata",
+    "docker-compose",
+    "dockerfile",
+    "pep621",
+    "pip_requirements",
+    "pip-compile"
+  ],
+  "pip_requirements": {
+    "managerFilePatterns": [
+      "/(^|/)requirements[^/]*\\.(txt|pip)$/",
+      "/^recovery/runtime/requirements\\.in$/",
+      "/^tests/tls/recovery\\-test\\-requirements\\.in$/"
+    ],
+    "ignorePaths": [
+      "**/vendor/**",
+      "**/node_modules/**",
+      "**/fixtures/**",
+      "recovery/runtime/requirements.lock",
+      "tests/tls/recovery-test-requirements.lock",
+      "docker/test-publisher/requirements.lock",
+      ".github/requirements-fuzz.txt",
+      ".github/requirements-fuzz.in",
+      "docker/test-publisher/requirements.in"
+    ]
+  },
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/^docker/test\\-publisher/requirements\\.lock$/",
+      "/^\\.github/requirements\\-fuzz\\.txt$/"
+    ]
+  },
+  "ignorePaths": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/fixtures/**",
+    "recovery/runtime/requirements.lock",
+    "tests/tls/recovery-test-requirements.lock"
+  ],
+  "packageRules": [
+    {
+      "description": "Regenerate this platform-qualified dependency lock from its exact requirements input without executing build hooks.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchFileNames": [
+        "recovery/runtime/requirements.in"
+      ],
+      "constraints": {
+        "uv": "0.13.4"
+      },
+      "postUpgradeTasks": {
+        "commands": [
+          "uv pip compile recovery/runtime/requirements.in --generate-hashes --python-version 3.14 --python-platform linux --no-build --output-file recovery/runtime/requirements.lock"
+        ],
+        "fileFilters": [
+          "recovery/runtime/requirements.lock"
+        ],
+        "executionMode": "update",
+        "workingDirTemplate": ".",
+        "installTools": {
+          "uv": {}
+        }
+      }
+    },
+    {
+      "description": "Regenerate this platform-qualified dependency lock from its exact requirements input without executing build hooks.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchFileNames": [
+        "tests/tls/recovery-test-requirements.in"
+      ],
+      "constraints": {
+        "uv": "0.13.4"
+      },
+      "postUpgradeTasks": {
+        "commands": [
+          "uv pip compile --python-version 3.14 --python-platform linux --generate-hashes --no-emit-index-url --no-build tests/tls/recovery-test-requirements.in --output-file tests/tls/recovery-test-requirements.lock"
+        ],
+        "fileFilters": [
+          "tests/tls/recovery-test-requirements.lock"
+        ],
+        "executionMode": "update",
+        "workingDirTemplate": ".",
+        "installTools": {
+          "uv": {}
+        }
+      }
+    }
   ]
 }
