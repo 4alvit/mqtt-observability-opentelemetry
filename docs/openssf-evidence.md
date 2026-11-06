@@ -25,7 +25,7 @@ The project is developed publicly in [Git](https://github.com/4alvit/mqtt-observ
 - [Test suite](../tests) and [CI workflows](../.github/workflows)
 - [Local CI entry point](../scripts/ci.sh)
 - [CodeQL analysis](../.github/workflows/codeql.yml)
-- [Dependency update configuration](../.github/dependabot.yml)
+- [Dependency update configuration](../renovate.json)
 
 The component gates use each component’s uv lock, Ruff, mypy and pytest with coverage; recovery and deployment policy tests are also included. Run `bash scripts/ci.sh integration` with Docker for the disposable Compose smoke test. Kubernetes/host monitoring checks require the explicit fixtures documented by their scripts.
 
