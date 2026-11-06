@@ -14,10 +14,11 @@ The optional `change_scope` policy provides exact `documentation_paths`, exact
 `required_paths` for documentation used as a build input, and
 `always_validate_workflows` for independently required checks. Documentation paths
 cannot exempt source, tests, fixtures, build configuration or dependencies.
-Manual dispatch, scheduled runs and release qualification remain full. Only with
-explicit `change_scope` opt-in does a documentation-only push stop before release
-preparation, version allocation, artifact builds or publication. This does not
-change the configured nightly policy.
+Documentation-only skipping applies to PR and merge-queue validation. Main-branch
+pushes, manual dispatch, scheduled runs and release qualification retain the full
+release path, even with `change_scope` enabled. This preserves security and contract
+checks and avoids leaving an in-flight release without a replacement when the
+default branch advances. The configured nightly policy is unchanged.
 
 ## Local checks
 
@@ -155,3 +156,31 @@ References: [GitHub schedules](https://docs.github.com/en/actions/reference/work
 Run `python3 scripts/release.py prepare-version --pr` from the clean default-branch HEAD. The command refreshes tags and opens a PR with synchronized owned version fields. An existing unreleased base is retained; use `--bump minor`, `--bump major`, or `--version X.Y.Z` for explicit intent. See [version plans](VERSIONING.md) for build overlays, the dedicated allocation ledger and recovery.
 
 A local candidate package also needs the saved `.release-plan.json` at its exact source commit. Restore the `version_plan` object from the published `release-manifest.json` into a disposable checkout before `release.py package`; do not invent a tag or native counter locally. Ordinary development builds can use the project's native build command and explicitly local version identity.
+
+## Regenerating documentation scope safely
+
+Documentation scope is maintained with the fixed CI Toolkit generator at
+[`56863cf0beed5ab97c4f27d7adb5aedb83c758d5`](https://github.com/victron-venus/venus-os-ci-toolkit/commit/56863cf0beed5ab97c4f27d7adb5aedb83c758d5).
+Use a separate toolkit checkout at that exact revision, then run from this
+repository's root (the first command updates scope; the second verifies it).
+The subshell stops before generation if the revision check fails or the toolkit
+has modified or untracked files, without changing your shell's options:
+
+```sh
+(
+  set -eu
+  TOOLKIT=/path/to/fixed/venus-os-ci-toolkit
+  toolkit_head=$(git -C "$TOOLKIT" rev-parse HEAD)
+  test "$toolkit_head" = 56863cf0beed5ab97c4f27d7adb5aedb83c758d5
+  toolkit_status=$(git -C "$TOOLKIT" status --porcelain=v1 --untracked-files=all)
+  test -z "$toolkit_status"
+  python3 "$TOOLKIT/scripts/install_release.py" . --change-scope-only
+  python3 "$TOOLKIT/scripts/install_release.py" . --change-scope-only --check
+)
+```
+
+The existing `toolkit_revision` fields record historical release-engine
+provenance; this narrow scope migration does not claim to replace that engine.
+The always-run workflow contract `test_release_scope.py` rejects the older
+`FORCE_FULL: 'false'` output. Main-branch release qualification stays full even
+when pull requests containing only ordinary documentation use lightweight CI.
