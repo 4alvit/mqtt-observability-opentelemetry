@@ -1,5 +1,5 @@
 # Runtime-only preparation. Recovery source continues to be mounted read-only.
-FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
+FROM python:3.15-slim@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75
 COPY requirements.lock /tmp/recovery-requirements.lock
 RUN python -m pip install --no-cache-dir --only-binary=:all: --require-hashes \
     -r /tmp/recovery-requirements.lock \
