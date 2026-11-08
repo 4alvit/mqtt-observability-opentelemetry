@@ -141,7 +141,7 @@
   "single_entry_ci": true,
   "release_notes": "CHANGELOG.md",
   "fuzzing": {
-    "toolkit_ref": "ecb29d724aee35aba541f7a0a379dfef424c088e"
+    "toolkit_ref": "f54201ae71e91d85514bb16ed1ffdf31b82b149f"
   },
   "toolkit_revision": "5e413f80a4353d328b4529eae57992ac3987e2dd",
   "change_scope": {
