@@ -25,6 +25,8 @@ For a TLS-protected collector, follow the explicit
 [OTLP HTTP/protobuf migration and certificate policy](docs/otlp-transport.md).
 The local plaintext gRPC demo remains available.
 
+Docs index: [docs/README.md](docs/README.md).
+
 <!-- ci-release-process:start -->
 ## Release process
 
