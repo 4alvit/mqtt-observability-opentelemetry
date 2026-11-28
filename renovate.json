@@ -94,16 +94,6 @@
           "uv": {}
         }
       }
-    },
-    {
-      "description": "The recovery runtime image is pinned with a CPython 3.14 interpreter probe plus the matching planner and smoke references; move the interpreter deliberately, together with those and a 3.14 lock, instead of through a routine dependency update.",
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchFileNames": [
-        "recovery/runtime/Dockerfile"
-      ],
-      "allowedVersions": "/^3\\.14-slim$/"
     }
   ]
 }

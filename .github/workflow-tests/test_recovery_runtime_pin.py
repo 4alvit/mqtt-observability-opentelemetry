@@ -18,6 +18,7 @@ SMOKE = "scripts/kubernetes_smoke.py"
 PROBE = "tests/tls/recovery_runtime_probe.py"
 LOCK = "recovery/runtime/requirements.lock"
 RENOVATE = "renovate.json"
+FLEET_PRESET = "local>victron-venus/venus-os-ci-toolkit:renovate-fleet"
 IMAGE = re.compile(r"python:(\d+)\.(\d+)-slim@sha256:[0-9a-f]{64}")
 LOCK_COMMAND = re.compile(r"uv pip compile .*--python-version (\d+\.\d+)")
 
@@ -66,22 +67,13 @@ class RecoveryRuntimePinTests(unittest.TestCase):
                          f"{LOCK} must be compiled for the interpreter {DOCKERFILE} pins; "
                          "regenerate it instead of dropping the interpreter")
 
-    def test_renovate_allows_only_the_pinned_interpreter_tag(self):
-        image = IMAGE.search(read(DOCKERFILE))
-        self.assertIsNotNone(image, f"{DOCKERFILE} must pin one slim image")
-        pinned = f"{image.group(1)}.{image.group(2)}-slim"
-        moved = f"{image.group(1)}.{int(image.group(2)) + 1}-slim"
-        rules = [rule for rule in runtime_rules()
-                 if DOCKERFILE in rule.get("matchFileNames", [])]
-        self.assertEqual(len(rules), 1, f"{RENOVATE} must carry one rule for {DOCKERFILE}")
-        allowed = rules[0].get("allowedVersions", "")
-        self.assertTrue(allowed.startswith("/") and allowed.endswith("/"),
-                        f"{RENOVATE} must bound {DOCKERFILE} to a tag pattern, got {allowed!r}")
-        pattern = re.compile(allowed[1:-1])
-        self.assertIsNotNone(pattern.fullmatch(pinned),
-                             f"{RENOVATE} must keep allowing {pinned}, including its digest updates")
-        self.assertIsNone(pattern.fullmatch(moved),
-                          f"{RENOVATE} must not move {DOCKERFILE} to {moved} on its own")
+    def test_runtime_image_policy_comes_from_the_fleet_preset(self):
+        config = json.loads(read(RENOVATE))
+        self.assertIn(FLEET_PRESET, config["extends"],
+                      f"{RENOVATE} must inherit the fleet preset that holds the runtime image")
+        local = [rule for rule in config["packageRules"] if "allowedVersions" in rule]
+        self.assertEqual(local, [],
+                         f"{RENOVATE} must not duplicate the fleet's interpreter pin for {DOCKERFILE}")
 
     def test_renovate_recompiles_the_lock_for_the_pinned_interpreter(self):
         image = IMAGE.search(read(DOCKERFILE))
