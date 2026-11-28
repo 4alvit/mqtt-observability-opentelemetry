@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.12] - Unreleased
+
+### Changed
+
+- keep local instruction files out of git.
+- add a navigation index for docs/.
+- add line-ending and language attributes.
+- isolate every auto-merge base edit (#224).
+- preserve merge identity and withdrawn auto-merge requests (#223).
+- classify documentation changes before project validation (#217).
+- Complete dependency update migration to Renovate (#216).
+- recheck automatic publication source (#214).
+- reconcile lost creation responses (#213).
+- harden release reads and rerun validation (#211).
+
+### Upgrade
+
+Update both components together using the existing package or container procedure. Preserve local broker credentials, collector endpoints and persistent monitoring data. Publishing this release does not deploy it.
+
+### Security
+
+TLS certificate verification and the existing security checks remain enabled. This release does not claim a new advisory fix beyond the previously released OpenTelemetry and certificate-store corrections.
+
 ## [0.2.11]
 
 ### Changed
