@@ -37,6 +37,13 @@ Python/cryptography versions, default UID/GID, verified-chain API and exact
 RSA/EC key decoding. CI runs those probes with no network and a read-only
 container filesystem.
 
+The base image is part of that contract: the Dockerfile, `recovery/migrate.py` and
+`scripts/kubernetes_smoke.py` deploy one pinned reference, the lock is compiled for
+the same interpreter, and `.github/workflow-tests/test_recovery_runtime_pin.py`
+compares all of them offline. Move the interpreter deliberately, updating those
+references, the lock and the probe together; Renovate only refreshes 3.14 digests
+for this Dockerfile.
+
 The recovery CI job uses this exact runtime to run the actual Kubernetes client
 against synthetic loopback PKI on amd64 and arm64. Only the hash-locked pytest
 harness is installed into temporary `/tmp`, from predownloaded wheels; the image
