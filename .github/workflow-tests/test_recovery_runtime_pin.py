@@ -6,6 +6,7 @@ dependency update that moves only the Dockerfile breaks the image at build time
 with a bare assertion from the probe, so the pins are checked here instead.
 """
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -16,7 +17,9 @@ PLANNER = "recovery/migrate.py"
 SMOKE = "scripts/kubernetes_smoke.py"
 PROBE = "tests/tls/recovery_runtime_probe.py"
 LOCK = "recovery/runtime/requirements.lock"
+RENOVATE = "renovate.json"
 IMAGE = re.compile(r"python:(\d+)\.(\d+)-slim@sha256:[0-9a-f]{64}")
+LOCK_COMMAND = re.compile(r"uv pip compile .*--python-version (\d+\.\d+)")
 
 
 def read(path: str) -> str:
@@ -26,6 +29,13 @@ def read(path: str) -> str:
 def references(path: str) -> set[str]:
     """Pinned CPython slim image references in a file."""
     return {match.group(0) for match in IMAGE.finditer(read(path))}
+
+
+def runtime_rules() -> list[dict]:
+    """Renovate rules scoped to the recovery runtime image or its lock."""
+    files = {DOCKERFILE, "recovery/runtime/requirements.in"}
+    return [rule for rule in json.loads(read(RENOVATE))["packageRules"]
+            if files & set(rule.get("matchFileNames", []))]
 
 
 class RecoveryRuntimePinTests(unittest.TestCase):
@@ -46,6 +56,42 @@ class RecoveryRuntimePinTests(unittest.TestCase):
         self.assertEqual(probed.groups(), image.groups()[:2],
                          f"{PROBE} must expect the interpreter {DOCKERFILE} pins; "
                          "update it together with the image")
+
+    def test_lock_is_compiled_for_the_pinned_interpreter(self):
+        image = IMAGE.search(read(DOCKERFILE))
+        self.assertIsNotNone(image, f"{DOCKERFILE} must pin one slim image")
+        compiled = LOCK_COMMAND.search(read(LOCK))
+        self.assertIsNotNone(compiled, f"{LOCK} must record the command that compiled it")
+        self.assertEqual(compiled.group(1), ".".join(image.groups()[:2]),
+                         f"{LOCK} must be compiled for the interpreter {DOCKERFILE} pins; "
+                         "regenerate it instead of dropping the interpreter")
+
+    def test_renovate_allows_only_the_pinned_interpreter_tag(self):
+        image = IMAGE.search(read(DOCKERFILE))
+        self.assertIsNotNone(image, f"{DOCKERFILE} must pin one slim image")
+        pinned = f"{image.group(1)}.{image.group(2)}-slim"
+        moved = f"{image.group(1)}.{int(image.group(2)) + 1}-slim"
+        rules = [rule for rule in runtime_rules()
+                 if DOCKERFILE in rule.get("matchFileNames", [])]
+        self.assertEqual(len(rules), 1, f"{RENOVATE} must carry one rule for {DOCKERFILE}")
+        allowed = rules[0].get("allowedVersions", "")
+        self.assertTrue(allowed.startswith("/") and allowed.endswith("/"),
+                        f"{RENOVATE} must bound {DOCKERFILE} to a tag pattern, got {allowed!r}")
+        pattern = re.compile(allowed[1:-1])
+        self.assertIsNotNone(pattern.fullmatch(pinned),
+                             f"{RENOVATE} must keep allowing {pinned}, including its digest updates")
+        self.assertIsNone(pattern.fullmatch(moved),
+                          f"{RENOVATE} must not move {DOCKERFILE} to {moved} on its own")
+
+    def test_renovate_recompiles_the_lock_for_the_pinned_interpreter(self):
+        image = IMAGE.search(read(DOCKERFILE))
+        self.assertIsNotNone(image, f"{DOCKERFILE} must pin one slim image")
+        rules = [rule for rule in runtime_rules()
+                 if "recovery/runtime/requirements.in" in rule.get("matchFileNames", [])]
+        self.assertEqual(len(rules), 1, f"{RENOVATE} must carry one rule for {LOCK}")
+        command = " ".join(rules[0]["postUpgradeTasks"]["commands"])
+        self.assertIn(f"--python-version {image.group(1)}.{image.group(2)}", command,
+                      f"{RENOVATE} must recompile {LOCK} for the interpreter {DOCKERFILE} pins")
 
     def test_probe_expects_the_locked_cryptography(self):
         locked = re.search(r"(?m)^cryptography==(\S+)", read(LOCK))
